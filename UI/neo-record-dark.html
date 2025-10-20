@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEO - Record Session</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1C1C1C 0%, #2A2A2A 100%);
+            min-height: 100vh;
+            color: #F5E8D8;
+            line-height: 1.5;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1C1C1C 0%, #333 100%);
+            color: #F5E8D8;
+            padding: 20px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid #333;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #FF6F61;
+        }
+
+        .view-toggle {
+            display: flex;
+            background: rgba(245, 232, 216, 0.1);
+            border-radius: 12px;
+            padding: 4px;
+            gap: 4px;
+            border: 1px solid rgba(245, 232, 216, 0.2);
+        }
+
+        .toggle-option {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            background: transparent;
+            color: rgba(245, 232, 216, 0.8);
+        }
+
+        .toggle-option.active {
+            background: rgba(255, 111, 97, 0.2);
+            color: #FF6F61;
+            backdrop-filter: blur(10px);
+        }
+
+        .date-selector {
+            background: rgba(245, 232, 216, 0.1);
+            border: 1px solid rgba(245, 232, 216, 0.2);
+            color: #F5E8D8;
+            padding: 10px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s ease;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 24px 20px 120px;
+        }
+
+        .session-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .session-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #F5E8D8;
+            margin-bottom: 8px;
+        }
+
+        .session-subtitle {
+            font-size: 14px;
+            color: #AAA;
+            opacity: 0.9;
+        }
+
+        .task-input-field {
+            position: relative;
+            margin-bottom: 32px;
+        }
+
+        .task-input {
+            width: 100%;
+            padding: 20px 16px 20px 56px;
+            background: transparent;
+            border: 2px solid rgba(121, 158, 255, 0.3);
+            border-radius: 16px;
+            color: #F5E8D8;
+            font-size: 18px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .task-input:focus {
+            border-color: #799EFF;
+            box-shadow: 0 0 0 4px rgba(121, 158, 255, 0.1);
+        }
+
+        .task-input::placeholder {
+            color: #666;
+        }
+
+        .task-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 20px;
+            color: #799EFF;
+        }
+
+        .suggestions-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: rgba(42, 42, 42, 0.95);
+            border: 1px solid #444;
+            border-radius: 12px;
+            backdrop-filter: blur(20px);
+            z-index: 10;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .suggestion-item {
+            padding: 16px 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid rgba(68, 68, 68, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .suggestion-item:hover {
+            background: rgba(255, 111, 97, 0.1);
+        }
+
+        .suggestion-item.current-task {
+            background: rgba(218, 165, 32, 0.1);
+            border-left: 3px solid #DAA520;
+        }
+
+        .suggestion-main {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .suggestion-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #F5E8D8;
+        }
+
+        .suggestion-details {
+            font-size: 12px;
+            color: #AAA;
+        }
+
+        .suggestion-badge {
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: rgba(218, 165, 32, 0.2);
+            color: #DAA520;
+            font-weight: 600;
+        }
+
+        .field-group {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 16px;
+            margin-bottom: 32px;
+            align-items: center;
+        }
+
+        .duration-field {
+            position: relative;
+            background: transparent;
+            border: 2px solid rgba(245, 232, 216, 0.2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .duration-field:focus-within {
+            border-color: #FF6F61;
+        }
+
+        .duration-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #F5E8D8;
+            background: transparent;
+            border: none;
+            outline: none;
+            width: 60px;
+        }
+
+        .duration-unit {
+            font-size: 16px;
+            color: #AAA;
+        }
+
+        .duration-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .duration-btn {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: rgba(255, 111, 97, 0.2);
+            color: #FF6F61;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .duration-btn:hover {
+            background: rgba(255, 111, 97, 0.3);
+        }
+
+        .split-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: transparent;
+            border: 2px solid rgba(245, 232, 216, 0.2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .split-toggle.active {
+            border-color: #FF6F61;
+            background: rgba(255, 111, 97, 0.1);
+        }
+
+        .split-checkbox {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #FF6F61;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            transition: all 0.2s ease;
+        }
+
+        .split-toggle.active .split-checkbox {
+            background: #FF6F61;
+            color: #1C1C1C;
+        }
+
+        .split-label {
+            font-size: 16px;
+            font-weight: 500;
+            color: #F5E8D8;
+        }
+
+        .timer-section {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .timer-display {
+            font-size: 72px;
+            font-weight: 300;
+            color: #F5E8D8;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            margin-bottom: 24px;
+            text-shadow: 0 0 20px rgba(245, 232, 216, 0.3);
+        }
+
+        .timer-display.running {
+            color: #FF6F61;
+            text-shadow: 0 0 30px rgba(255, 111, 97, 0.4);
+        }
+
+        .start-button {
+            width: 120px;
+            height: 48px;
+            border-radius: 24px;
+            border: 2px solid #FF6F61;
+            background: transparent;
+            color: #FF6F61;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 32px;
+            letter-spacing: 0.5px;
+        }
+
+        .start-button:hover {
+            background: rgba(255, 111, 97, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .start-button:active {
+            transform: translateY(0);
+        }
+
+        .start-button.stop {
+            background: #FF6F61;
+            color: #1C1C1C;
+        }
+
+        .start-button.stop:hover {
+            background: #FF4500;
+        }
+
+        .timer-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin: 0 auto 32px;
+        }
+
+        .pause-button {
+            border-color: #DAA520 !important;
+            color: #DAA520 !important;
+        }
+
+        .pause-button:hover {
+            background: rgba(218, 165, 32, 0.1) !important;
+        }
+
+        .session-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: rgba(245, 232, 216, 0.02);
+            border: 1px solid rgba(245, 232, 216, 0.1);
+            border-radius: 16px;
+            padding: 24px 16px;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent-color, rgba(245, 232, 216, 0.2));
+        }
+
+        .stat-card:hover {
+            background: rgba(245, 232, 216, 0.05);
+            border-color: rgba(245, 232, 216, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 300;
+            color: #F5E8D8;
+            margin-bottom: 8px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .stat-card.elapsed {
+            --accent-color: #FF6F61;
+        }
+
+        .stat-card.remaining {
+            --accent-color: #DAA520;
+        }
+
+        .stat-card.progress {
+            --accent-color: #FF6F61;
+        }
+
+        .stat-card.session {
+            --accent-color: #F5E8D8;
+        }
+
+        .progress-indicator {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: var(--accent-color);
+            transition: width 0.5s ease;
+            border-radius: 0 3px 0 0;
+        }
+
+
+        .floating-controls {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 200;
+        }
+
+        .control-button {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
+            color: #F5E8D8;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            border: 1px solid #444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-button:hover {
+            transform: scale(1.1);
+            background: linear-gradient(135deg, #333 0%, #444 100%);
+        }
+
+        .control-button.pause {
+            background: linear-gradient(135deg, #DAA520 0%, #B8860B 100%);
+            color: #1C1C1C;
+        }
+
+        .control-button.reset {
+            background: linear-gradient(135deg, #FF4500 0%, #DC2626 100%);
+            color: white;
+        }
+
+        .session-logs {
+            margin-top: 40px;
+        }
+
+        .logs-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F5E8D8;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .session-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .session-item {
+            background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
+            border-radius: 12px;
+            padding: 16px 20px;
+            border: 1px solid #444;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .session-item.active {
+            border-color: #FF6F61;
+            background: linear-gradient(135deg, #2A1F1A 0%, #3A2A20 100%);
+            box-shadow: 0 4px 16px rgba(255, 111, 97, 0.15);
+        }
+
+        .session-item.active::before {
+            content: 'ACTIVE';
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            background: #FF6F61;
+            color: #1C1C1C;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .session-info {
+            flex: 1;
+        }
+
+        .session-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #F5E8D8;
+            margin-bottom: 4px;
+        }
+
+        .session-meta {
+            font-size: 12px;
+            color: #AAA;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .session-category {
+            background: rgba(255, 111, 97, 0.2);
+            color: #FF6F61;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .session-type {
+            background: rgba(218, 165, 32, 0.2);
+            color: #DAA520;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .session-duration {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F5E8D8;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .session-progress {
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            font-size: 12px;
+        }
+
+        .progress-item {
+            text-align: center;
+        }
+
+        .progress-value {
+            font-weight: 600;
+            color: #F5E8D8;
+            margin-bottom: 2px;
+        }
+
+        .progress-label {
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .deviation-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            justify-content: center;
+        }
+
+        .deviation-indicator.positive {
+            color: #4CAF50;
+        }
+
+        .deviation-indicator.negative {
+            color: #FF6F61;
+        }
+
+        .deviation-indicator.neutral {
+            color: #DAA520;
+        }
+
+        .new-session-toggle {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(255, 111, 97, 0.1);
+            border: 2px dashed #FF6F61;
+            border-radius: 12px;
+            color: #FF6F61;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 8px;
+        }
+
+        .new-session-toggle:hover {
+            background: rgba(255, 111, 97, 0.15);
+        }
+
+        .new-session-form {
+            background: rgba(42, 42, 42, 0.95);
+            border: 1px solid #444;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 8px;
+            backdrop-filter: blur(20px);
+            display: none;
+        }
+
+        .new-session-form.active {
+            display: block;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .form-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-label {
+            font-size: 12px;
+            color: #AAA;
+            font-weight: 600;
+        }
+
+        .form-input {
+            padding: 10px 12px;
+            background: transparent;
+            border: 1px solid rgba(245, 232, 216, 0.2);
+            border-radius: 8px;
+            color: #F5E8D8;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .form-input:focus {
+            border-color: #FF6F61;
+        }
+
+        .form-select {
+            padding: 10px 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid rgba(245, 232, 216, 0.2);
+            border-radius: 8px;
+            color: #F5E8D8;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .form-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .form-btn.primary {
+            background: #FF6F61;
+            color: #1C1C1C;
+        }
+
+        .form-btn.secondary {
+            background: transparent;
+            color: #AAA;
+            border: 1px solid rgba(245, 232, 216, 0.2);
+        }
+
+        .current-session-name {
+            text-align: center;
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: rgba(255, 111, 97, 0.1);
+            border: 1px solid rgba(255, 111, 97, 0.2);
+            border-radius: 12px;
+        }
+
+        .session-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #FF6F61;
+            margin-bottom: 4px;
+        }
+
+        .session-subtitle {
+            font-size: 12px;
+            color: #AAA;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .pause-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            display: none;
+        }
+
+        .pause-modal.active {
+            display: flex;
+        }
+
+        .pause-dialog {
+            background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            border: 1px solid #444;
+        }
+
+        .pause-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F5E8D8;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .pause-reasons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .pause-reason {
+            padding: 12px 16px;
+            background: rgba(245, 232, 216, 0.05);
+            border: 1px solid rgba(245, 232, 216, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+
+        .pause-reason:hover, .pause-reason.selected {
+            background: rgba(255, 111, 97, 0.1);
+            border-color: #FF6F61;
+        }
+
+        .pause-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .pause-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .pause-btn.cancel {
+            background: transparent;
+            color: #AAA;
+            border: 1px solid rgba(245, 232, 216, 0.2);
+        }
+
+        .pause-btn.confirm {
+            background: #DAA520;
+            color: #1C1C1C;
+        }
+
+        .session-input-wrapper {
+            position: relative;
+        }
+
+        .session-input {
+            cursor: pointer;
+        }
+
+        .task-options-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: rgba(42, 42, 42, 0.98);
+            border: 1px solid #444;
+            border-radius: 12px;
+            backdrop-filter: blur(20px);
+            z-index: 100;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 4px;
+            display: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .task-options-dropdown.active {
+            display: block;
+        }
+
+        .task-option-section {
+            padding: 12px 0;
+        }
+
+        .task-option-header {
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #AAA;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(68, 68, 68, 0.5);
+            margin-bottom: 4px;
+        }
+
+        .task-option-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid rgba(68, 68, 68, 0.3);
+        }
+
+        .task-option-item:last-child {
+            border-bottom: none;
+        }
+
+        .task-option-item:hover {
+            background: rgba(255, 111, 97, 0.1);
+        }
+
+        .task-option-item.custom-task {
+            border-top: 1px solid rgba(68, 68, 68, 0.5);
+            background: rgba(255, 111, 97, 0.05);
+        }
+
+        .task-option-item.custom-task:hover {
+            background: rgba(255, 111, 97, 0.15);
+        }
+
+        .task-option-main {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .task-option-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #F5E8D8;
+        }
+
+        .task-option-meta {
+            font-size: 12px;
+            color: #AAA;
+        }
+
+        .task-option-divider {
+            height: 1px;
+            background: rgba(68, 68, 68, 0.5);
+            margin: 8px 0;
+        }
+
+        .form-select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background: rgba(42, 42, 42, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">NEO</div>
+            <div class="view-toggle">
+                <button class="toggle-option">Today</button>
+                <button class="toggle-option">Compare</button>
+                <button class="toggle-option active">Record</button>
+            </div>
+        </div>
+        <select class="date-selector">
+            <option>Friday, September 27</option>
+            <option>Saturday, September 28</option>
+        </select>
+    </div>
+
+    <div class="container">
+        <div class="session-header">
+            <div class="session-title">Record Session</div>
+            <div class="session-subtitle">Track your focused work time</div>
+        </div>
+
+        <div class="task-input-field">
+            <div class="task-icon">😊</div>
+            <input type="text" class="task-input" id="taskInput" placeholder="Task name..." value="Data Analysis & Review" onfocus="showSuggestions()" onblur="hideSuggestions()">
+            <div class="suggestions-dropdown" id="suggestionsDropdown">
+                <div class="suggestion-item current-task" onclick="selectTask('Data Analysis & Review', '90')">
+                    <div class="suggestion-main">
+                        <div class="suggestion-name">Data Analysis & Review</div>
+                        <div class="suggestion-details">2:30 - 4:00 PM • Work</div>
+                    </div>
+                    <div class="suggestion-badge">NOW</div>
+                </div>
+                <div class="suggestion-item" onclick="selectTask('Evening Study Session', '60')">
+                    <div class="suggestion-main">
+                        <div class="suggestion-name">Evening Study Session</div>
+                        <div class="suggestion-details">5:30 - 6:30 PM • Education</div>
+                    </div>
+                </div>
+                <div class="suggestion-item" onclick="selectTask('Project Planning', '60')">
+                    <div class="suggestion-main">
+                        <div class="suggestion-name">Project Planning</div>
+                        <div class="suggestion-details">7:00 - 8:00 PM • Work</div>
+                    </div>
+                </div>
+            </div>
+            <button class="new-session-toggle" onclick="toggleNewSession()">
+                + Create new session
+            </button>
+            <div class="new-session-form" id="newSessionForm">
+                <div class="form-row">
+                    <div class="form-field" style="grid-column: 1 / -1;">
+                        <label class="form-label">Session</label>
+                        <div class="session-input-wrapper">
+                            <input type="text" class="form-input session-input" id="newSessionName" placeholder="Choose existing task or enter new session" onclick="showTaskOptions()" readonly>
+                            <div class="task-options-dropdown" id="taskOptionsDropdown">
+                                <div class="task-option-section">
+                                    <div class="task-option-header">Existing Tasks</div>
+                                    <div class="task-option-item" onclick="selectExistingTask('Data Analysis & Review', 'work', 'planned')">
+                                        <div class="task-option-main">
+                                            <div class="task-option-name">Data Analysis & Review</div>
+                                            <div class="task-option-meta">Work • Planned</div>
+                                        </div>
+                                    </div>
+                                    <div class="task-option-item" onclick="selectExistingTask('Evening Study Session', 'education', 'planned')">
+                                        <div class="task-option-main">
+                                            <div class="task-option-name">Evening Study Session</div>
+                                            <div class="task-option-meta">Education • Planned</div>
+                                        </div>
+                                    </div>
+                                    <div class="task-option-item" onclick="selectExistingTask('Project Planning', 'work', 'planned')">
+                                        <div class="task-option-main">
+                                            <div class="task-option-name">Project Planning</div>
+                                            <div class="task-option-meta">Work • Planned</div>
+                                        </div>
+                                    </div>
+                                    <div class="task-option-item" onclick="selectExistingTask('Morning Workout', 'health', 'planned')">
+                                        <div class="task-option-main">
+                                            <div class="task-option-name">Morning Workout</div>
+                                            <div class="task-option-meta">Health & Fitness • Planned</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="task-option-divider"></div>
+                                <div class="task-option-item custom-task" onclick="enableCustomSession()">
+                                    <div class="task-option-main">
+                                        <div class="task-option-name">✏️ Enter custom session</div>
+                                        <div class="task-option-meta">Create new session manually</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label class="form-label">Category</label>
+                        <select class="form-select" id="newSessionCategory" disabled>
+                            <option value="work">Work</option>
+                            <option value="personal">Personal</option>
+                            <option value="health">Health & Fitness</option>
+                            <option value="education">Education</option>
+                            <option value="creative">Creative</option>
+                            <option value="life">Life Admin</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Session Type</label>
+                        <select class="form-select" id="newSessionType" disabled>
+                            <option value="planned">Planned Task</option>
+                            <option value="adhoc">Ad-hoc Work</option>
+                            <option value="forgotten">Forgotten Task</option>
+                            <option value="urgent">Urgent Priority</option>
+                            <option value="learning">Learning Session</option>
+                            <option value="break">Break/Rest</option>
+                            <option value="maintenance">Maintenance Work</option>
+                            <option value="creative">Creative Flow</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="form-btn primary" onclick="createNewSession()">Create</button>
+                    <button class="form-btn secondary" onclick="cancelNewSession()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="field-group">
+            <div class="duration-field">
+                <input type="number" class="duration-value" id="durationValue" value="1" min="1" max="8">
+                <span class="duration-unit">hr</span>
+                <div class="duration-controls">
+                    <button class="duration-btn" onclick="adjustDuration(1)">+</button>
+                    <button class="duration-btn" onclick="adjustDuration(-1)">−</button>
+                </div>
+            </div>
+            <div class="split-toggle" id="splitToggle" onclick="toggleSplit()">
+                <div class="split-checkbox">✓</div>
+                <span class="split-label">Split up</span>
+            </div>
+        </div>
+
+        <div class="timer-section">
+            <div class="current-session-name">
+                <div class="session-title" id="currentSessionTitle">Data Analysis & Review</div>
+                <div class="session-subtitle">Current Session</div>
+            </div>
+            <div class="timer-display" id="timerDisplay">00:00:00</div>
+            <div class="timer-controls">
+                <button class="start-button" id="startButton" onclick="toggleTimer()">START</button>
+                <button class="start-button pause-button" id="pauseButton" onclick="showPauseModal()" style="display: none;">PAUSE</button>
+            </div>
+        </div>
+
+        <div class="session-stats">
+            <div class="stat-card elapsed">
+                <div class="stat-value" id="elapsedTime">00m</div>
+                <div class="stat-label">Elapsed</div>
+                <div class="progress-indicator" style="width: 0%;"></div>
+            </div>
+            <div class="stat-card remaining">
+                <div class="stat-value" id="remainingTime">60m</div>
+                <div class="stat-label">Remaining</div>
+                <div class="progress-indicator" style="width: 100%;"></div>
+            </div>
+            <div class="stat-card progress">
+                <div class="stat-value" id="progressPercent">0%</div>
+                <div class="stat-label">Progress</div>
+                <div class="progress-indicator" id="progressIndicator" style="width: 0%;"></div>
+            </div>
+            <div class="stat-card session">
+                <div class="stat-value" id="sessionCount">01</div>
+                <div class="stat-label">Session</div>
+                <div class="progress-indicator" style="width: 25%;"></div>
+            </div>
+        </div>
+
+        <!-- Session Logs -->
+        <div class="session-logs">
+            <div class="logs-title">
+                📊 Today's Sessions
+            </div>
+            <div class="session-list">
+                <!-- Active Session -->
+                <div class="session-item active">
+                    <div class="session-header">
+                        <div class="session-info">
+                            <div class="session-name">Data Analysis & Review</div>
+                            <div class="session-meta">
+                                <span class="session-category">Work</span>
+                                <span class="session-type">Planned</span>
+                                <span>Started 2:47 PM</span>
+                            </div>
+                        </div>
+                        <div class="session-duration">15:32</div>
+                    </div>
+                    <div class="session-progress">
+                        <div class="progress-item">
+                            <div class="progress-value">26%</div>
+                            <div class="progress-label">Progress</div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="progress-value">44m</div>
+                            <div class="progress-label">Remaining</div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="deviation-indicator neutral">
+                                ⏱️ On track
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Completed Sessions -->
+                <div class="session-item">
+                    <div class="session-header">
+                        <div class="session-info">
+                            <div class="session-name">Client Presentation Prep</div>
+                            <div class="session-meta">
+                                <span class="session-category">Work</span>
+                                <span class="session-type">Planned</span>
+                                <span>11:20 AM - 1:10 PM</span>
+                            </div>
+                        </div>
+                        <div class="session-duration">1h 50m</div>
+                    </div>
+                    <div class="session-progress">
+                        <div class="progress-item">
+                            <div class="progress-value">100%</div>
+                            <div class="progress-label">Complete</div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="progress-value">1h 30m</div>
+                            <div class="progress-label">Planned</div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="deviation-indicator negative">
+                                +20m overtime
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="session-item">
+                    <div class="session-header">
+                        <div class="session-info">
+                            <div class="session-name">Morning Workout</div>
+                            <div class="session-meta">
+                                <span class="session-category">Health</span>
+                                <span class="session-type">Planned</span>
+                                <span>9:00 AM - 10:30 AM</span>
+                            </div>
+                        </div>
+                        <div class="session-duration">1h 30m</div>
+                    </div>
+                    <div class="session-progress">
+                        <div class="progress-item">
+                            <div class="progress-value">100%</div>
+                            <div class="progress-label">Complete</div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="progress-value">1h 30m</div>
+                            <div class="progress-label">Planned</div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="deviation-indicator positive">
+                                ✓ Perfect timing
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="session-item">
+                    <div class="session-header">
+                        <div class="session-info">
+                            <div class="session-name">Quick Email Check</div>
+                            <div class="session-meta">
+                                <span class="session-category">Work</span>
+                                <span class="session-type">Ad-hoc</span>
+                                <span>4:15 PM - 4:45 PM</span>
+                            </div>
+                        </div>
+                        <div class="session-duration">30m</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="floating-controls">
+        <button class="control-button reset" onclick="resetTimer()" title="Reset">🔄</button>
+    </div>
+
+    <!-- Pause Reason Modal -->
+    <div class="pause-modal" id="pauseModal">
+        <div class="pause-dialog">
+            <div class="pause-title">Why are you pausing?</div>
+            <div class="pause-reasons">
+                <div class="pause-reason" onclick="selectPauseReason('Break - Coffee/Water')">
+                    ☕ Break - Coffee/Water
+                </div>
+                <div class="pause-reason" onclick="selectPauseReason('Break - Bathroom')">
+                    🚻 Break - Bathroom
+                </div>
+                <div class="pause-reason" onclick="selectPauseReason('Interruption - Call/Meeting')">
+                    📞 Interruption - Call/Meeting
+                </div>
+                <div class="pause-reason" onclick="selectPauseReason('Interruption - Colleague')">
+                    👥 Interruption - Colleague
+                </div>
+                <div class="pause-reason" onclick="selectPauseReason('Task Switch - Urgent')">
+                    🚨 Task Switch - Urgent
+                </div>
+                <div class="pause-reason" onclick="selectPauseReason('Mental Break - Overwhelmed')">
+                    🧠 Mental Break - Overwhelmed
+                </div>
+                <div class="pause-reason" onclick="selectPauseReason('Technical Issue')">
+                    💻 Technical Issue
+                </div>
+                <div class="pause-reason" onclick="selectPauseReason('Other')">
+                    ❓ Other Reason
+                </div>
+            </div>
+            <div class="pause-actions">
+                <button class="pause-btn cancel" onclick="hidePauseModal()">Cancel</button>
+                <button class="pause-btn confirm" onclick="confirmPause()">Pause Session</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isRunning = false;
+        let isPaused = false;
+        let startTime = 0;
+        let elapsedTime = 0;
+        let plannedDuration = 60; // minutes
+        let timerInterval;
+
+        const timerDisplay = document.getElementById('timerDisplay');
+        const startButton = document.getElementById('startButton');
+
+        function showSuggestions() {
+            document.getElementById('suggestionsDropdown').style.display = 'block';
+        }
+
+        function hideSuggestions() {
+            setTimeout(() => {
+                document.getElementById('suggestionsDropdown').style.display = 'none';
+            }, 200);
+        }
+
+        function selectTask(taskName, duration) {
+            document.getElementById('taskInput').value = taskName;
+            document.getElementById('durationValue').value = duration / 60;
+            plannedDuration = parseInt(duration);
+            hideSuggestions();
+            updateDisplay();
+        }
+
+        function adjustDuration(change) {
+            const durationInput = document.getElementById('durationValue');
+            let newValue = parseInt(durationInput.value) + change;
+            if (newValue >= 1 && newValue <= 8) {
+                durationInput.value = newValue;
+                plannedDuration = newValue * 60;
+                updateDisplay();
+            }
+        }
+
+        function toggleSplit() {
+            const splitToggle = document.getElementById('splitToggle');
+            splitToggle.classList.toggle('active');
+        }
+
+        function toggleNewSession() {
+            const form = document.getElementById('newSessionForm');
+            form.classList.toggle('active');
+        }
+
+        function createNewSession() {
+            const name = document.getElementById('newSessionName').value.trim();
+            const category = document.getElementById('newSessionCategory').value;
+            const type = document.getElementById('newSessionType').value;
+
+            if (!name) {
+                alert('Please enter a session name');
+                return;
+            }
+
+            // Update the task input and current session
+            document.getElementById('taskInput').value = name;
+            document.getElementById('currentSessionTitle').textContent = name;
+
+            // Hide the form
+            toggleNewSession();
+            hideSuggestions();
+
+            // Clear form
+            document.getElementById('newSessionName').value = '';
+        }
+
+        function cancelNewSession() {
+            toggleNewSession();
+            document.getElementById('newSessionName').value = '';
+        }
+
+        function toggleTimer() {
+            if (!isRunning && !isPaused) {
+                startTimer();
+            } else if (isPaused) {
+                resumeTimer();
+            } else {
+                stopTimer();
+            }
+        }
+
+        function startTimer() {
+            isRunning = true;
+            isPaused = false;
+            startTime = Date.now() - elapsedTime;
+            startButton.textContent = 'END';
+            startButton.classList.add('stop');
+            timerDisplay.classList.add('running');
+            document.getElementById('pauseButton').style.display = 'flex';
+
+            timerInterval = setInterval(updateTimer, 100);
+        }
+
+        function stopTimer() {
+            isRunning = false;
+            isPaused = false;
+            clearInterval(timerInterval);
+            startButton.textContent = 'START';
+            startButton.classList.remove('stop');
+            timerDisplay.classList.remove('running');
+            document.getElementById('pauseButton').style.display = 'none';
+
+            // Save session data here
+            alert('Session completed! Time: ' + formatTime(elapsedTime));
+        }
+
+        let selectedPauseReason = '';
+
+        function showPauseModal() {
+            if (isRunning) {
+                document.getElementById('pauseModal').classList.add('active');
+            }
+        }
+
+        function hidePauseModal() {
+            document.getElementById('pauseModal').classList.remove('active');
+            selectedPauseReason = '';
+            // Clear selections
+            document.querySelectorAll('.pause-reason').forEach(r => r.classList.remove('selected'));
+        }
+
+        function selectPauseReason(reason) {
+            selectedPauseReason = reason;
+            document.querySelectorAll('.pause-reason').forEach(r => r.classList.remove('selected'));
+            event.target.classList.add('selected');
+        }
+
+        function confirmPause() {
+            if (!selectedPauseReason) {
+                alert('Please select a reason for pausing');
+                return;
+            }
+
+            isPaused = true;
+            isRunning = false;
+            clearInterval(timerInterval);
+            startButton.textContent = 'RESUME';
+            startButton.classList.remove('stop');
+            document.getElementById('pauseButton').style.display = 'none';
+
+            // Log the pause reason (you can store this for analytics)
+            console.log('Session paused:', selectedPauseReason);
+
+            hidePauseModal();
+        }
+
+        function resumeTimer() {
+            isRunning = true;
+            isPaused = false;
+            startTime = Date.now() - elapsedTime;
+            startButton.textContent = 'END';
+            startButton.classList.add('stop');
+            timerDisplay.classList.add('running');
+            document.getElementById('pauseButton').style.display = 'flex';
+
+            timerInterval = setInterval(updateTimer, 100);
+        }
+
+        function resetTimer() {
+            isRunning = false;
+            isPaused = false;
+            elapsedTime = 0;
+            clearInterval(timerInterval);
+            startButton.textContent = 'START';
+            startButton.classList.remove('stop');
+            timerDisplay.classList.remove('running');
+            document.getElementById('pauseButton').style.display = 'none';
+            updateDisplay();
+        }
+
+        function updateTimer() {
+            elapsedTime = Date.now() - startTime;
+            updateDisplay();
+        }
+
+        function updateDisplay() {
+            timerDisplay.textContent = formatTime(elapsedTime);
+
+            const elapsedMinutes = Math.floor(elapsedTime / 60000);
+            const remainingMinutes = Math.max(0, plannedDuration - elapsedMinutes);
+            const progressPercent = Math.min(100, (elapsedMinutes / plannedDuration) * 100);
+
+            document.getElementById('elapsedTime').textContent = elapsedMinutes.toString().padStart(2, '0') + 'm';
+            document.getElementById('remainingTime').textContent = remainingMinutes.toString().padStart(2, '0') + 'm';
+            document.getElementById('progressPercent').textContent = Math.round(progressPercent) + '%';
+            document.getElementById('progressIndicator').style.width = progressPercent + '%';
+        }
+
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function showTaskOptions() {
+            const dropdown = document.getElementById('taskOptionsDropdown');
+            dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function selectExistingTask(taskName, category, type) {
+            // Update the session input
+            document.getElementById('sessionInput').value = taskName;
+
+            // Auto-fill category and session type
+            document.getElementById('sessionCategory').value = category;
+            document.getElementById('sessionType').value = type;
+
+            // Hide the dropdown
+            document.getElementById('taskOptionsDropdown').style.display = 'none';
+        }
+
+        function enableCustomSession() {
+            // Clear the session input and enable typing
+            const sessionInput = document.getElementById('sessionInput');
+            sessionInput.value = '';
+            sessionInput.focus();
+
+            // Reset category and type to defaults
+            document.getElementById('sessionCategory').value = 'Personal';
+            document.getElementById('sessionType').value = 'Focus';
+
+            // Hide the dropdown
+            document.getElementById('taskOptionsDropdown').style.display = 'none';
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('taskOptionsDropdown');
+            const sessionInput = document.getElementById('sessionInput');
+
+            if (!sessionInput.contains(event.target) && !dropdown.contains(event.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        // Initialize display
+        updateDisplay();
+    </script>
+</body>
+</html>

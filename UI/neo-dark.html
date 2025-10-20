@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEO - Dark Mode Professional</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1C1C1C 0%, #2A2A2A 100%);
+            min-height: 100vh;
+            color: #F5E8D8;
+            line-height: 1.5;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1C1C1C 0%, #333 100%);
+            color: #F5E8D8;
+            padding: 20px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid #333;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #FF6F61;
+        }
+
+        .view-toggle {
+            display: flex;
+            background: rgba(245, 232, 216, 0.1);
+            border-radius: 12px;
+            padding: 4px;
+            gap: 4px;
+            border: 1px solid rgba(245, 232, 216, 0.2);
+        }
+
+        .toggle-option {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            background: transparent;
+            color: rgba(245, 232, 216, 0.8);
+        }
+
+        .toggle-option.active {
+            background: rgba(255, 111, 97, 0.2);
+            color: #FF6F61;
+            backdrop-filter: blur(10px);
+        }
+
+        .date-selector {
+            background: rgba(245, 232, 216, 0.1);
+            border: 1px solid rgba(245, 232, 216, 0.2);
+            color: #F5E8D8;
+            padding: 10px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s ease;
+        }
+
+        .date-selector:hover {
+            background: rgba(245, 232, 216, 0.15);
+            border-color: rgba(245, 232, 216, 0.3);
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 24px 20px 120px;
+        }
+
+        .timeline-container {
+            position: relative;
+            padding-left: 80px;
+        }
+
+        .time-axis {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 70px;
+            border-right: 2px solid #333;
+        }
+
+        .time-marker {
+            position: absolute;
+            left: 0;
+            width: 65px;
+            text-align: right;
+            font-size: 13px;
+            color: #F5E8D8;
+            font-weight: 600;
+            transform: translateY(-8px);
+            padding-right: 12px;
+            opacity: 0.8;
+        }
+
+        .time-dot {
+            position: absolute;
+            right: -5px;
+            top: -2px;
+            width: 8px;
+            height: 8px;
+            background: #DAA520;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(218, 165, 32, 0.4);
+        }
+
+        .current-time-indicator {
+            position: absolute;
+            left: 68px;
+            width: calc(100% - 68px);
+            height: 3px;
+            background: linear-gradient(90deg, #FF4500 0%, #FF6F61 100%);
+            border-radius: 2px;
+            z-index: 10;
+            box-shadow: 0 2px 12px rgba(255, 69, 0, 0.5);
+        }
+
+        .current-time-indicator::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: -3px;
+            width: 9px;
+            height: 9px;
+            background: #FF4500;
+            border-radius: 50%;
+            border: 2px solid #1C1C1C;
+            box-shadow: 0 2px 12px rgba(255, 69, 0, 0.6);
+        }
+
+        .time-block {
+            position: relative;
+            margin-bottom: 16px;
+            min-height: 80px;
+        }
+
+        .task-card {
+            background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            border: 1px solid #444;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .task-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 4px;
+            background: var(--priority-color);
+        }
+
+        .task-card.high-priority {
+            --priority-color: linear-gradient(180deg, #FF4500 0%, #FF6F61 100%);
+        }
+
+        .task-card.medium-priority {
+            --priority-color: linear-gradient(180deg, #DAA520 0%, #FFD700 100%);
+        }
+
+        .task-card.low-priority {
+            --priority-color: linear-gradient(180deg, #F5E8D8 0%, #E5D5C8 100%);
+        }
+
+        .task-card.active {
+            --priority-color: linear-gradient(180deg, #FF6F61 0%, #FF4500 100%);
+            background: linear-gradient(135deg, #2A1F1A 0%, #3A2A20 100%);
+            border-color: #FF6F61;
+            box-shadow: 0 8px 32px rgba(255, 111, 97, 0.2);
+            transform: translateX(4px);
+        }
+
+        .task-card:hover {
+            transform: translateX(6px) translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+            border-color: #555;
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .task-time {
+            font-size: 12px;
+            color: #F5E8D8;
+            font-weight: 600;
+            background: rgba(245, 232, 216, 0.1);
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(245, 232, 216, 0.2);
+        }
+
+        .task-duration {
+            font-size: 11px;
+            color: #DAA520;
+            background: rgba(218, 165, 32, 0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 500;
+            border: 1px solid rgba(218, 165, 32, 0.2);
+        }
+
+        .task-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #F5E8D8;
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+
+        .task-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .task-type {
+            font-size: 12px;
+            color: #AAA;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-weight: 600;
+        }
+
+        .priority-badge {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .high-priority .priority-badge {
+            background: rgba(255, 69, 0, 0.2);
+            color: #FF6F61;
+            border: 1px solid rgba(255, 111, 97, 0.3);
+        }
+
+        .medium-priority .priority-badge {
+            background: rgba(218, 165, 32, 0.2);
+            color: #DAA520;
+            border: 1px solid rgba(218, 165, 32, 0.3);
+        }
+
+        .low-priority .priority-badge {
+            background: rgba(245, 232, 216, 0.1);
+            color: #F5E8D8;
+            border: 1px solid rgba(245, 232, 216, 0.2);
+        }
+
+        .task-progress {
+            width: 100%;
+            height: 6px;
+            background: rgba(245, 232, 216, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+
+        .task-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #FF6F61 0%, #FF4500 100%);
+            border-radius: 3px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            box-shadow: 0 0 8px rgba(255, 111, 97, 0.3);
+        }
+
+        .task-progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 20px;
+            background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 100%);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-20px); }
+            100% { transform: translateX(20px); }
+        }
+
+        .break-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 0;
+            color: #AAA;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .break-line {
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, #DAA520 50%, transparent 100%);
+        }
+
+        .break-text {
+            background: rgba(218, 165, 32, 0.1);
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(218, 165, 32, 0.2);
+            color: #DAA520;
+        }
+
+        .add-button {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #FF6F61 0%, #FF4500 100%);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 8px 32px rgba(255, 111, 97, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .add-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 12px 40px rgba(255, 111, 97, 0.6);
+        }
+
+        .add-button:active {
+            transform: scale(0.95);
+        }
+
+        .today-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            border: 1px solid #444;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #F5E8D8;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #AAA;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .stat-card.progress {
+            border-color: #FF6F61;
+            background: linear-gradient(135deg, #2A1F1A 0%, #3A2A20 100%);
+        }
+
+        .stat-card.progress .stat-value {
+            color: #FF6F61;
+        }
+
+        .glow-effect {
+            box-shadow: 0 0 20px rgba(255, 111, 97, 0.3);
+        }
+
+        .task-card.completed {
+            opacity: 0.6;
+            background: linear-gradient(135deg, #1A2A1A 0%, #2A3A2A 100%);
+            border-color: #4A5A4A;
+        }
+
+        .task-card.completed .task-title {
+            text-decoration: line-through;
+            color: #AAA;
+        }
+
+        .floating-insights {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            width: 320px;
+            background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid #444;
+            z-index: 200;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+
+        .floating-insights.collapsed {
+            width: 60px;
+            height: 60px;
+        }
+
+        .insights-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid #444;
+        }
+
+        .insights-header:hover {
+            background: rgba(255, 111, 97, 0.05);
+        }
+
+        .insights-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #F5E8D8;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: opacity 0.3s ease;
+        }
+
+        .floating-insights.collapsed .insights-title {
+            opacity: 0;
+        }
+
+        .toggle-icon {
+            font-size: 18px;
+            color: #FF6F61;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(255, 111, 97, 0.1);
+        }
+
+        .toggle-icon:hover {
+            background: rgba(255, 111, 97, 0.2);
+            transform: scale(1.1);
+        }
+
+        .floating-insights.collapsed .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .insights-content {
+            padding: 0 20px 20px 20px;
+            max-height: 400px;
+            opacity: 1;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .floating-insights.collapsed .insights-content {
+            max-height: 0;
+            opacity: 0;
+            padding: 0;
+        }
+
+        .insights-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #FF6F61;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(255, 111, 97, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .floating-insights.collapsed .insights-badge {
+            top: 5px;
+            right: 5px;
+            transform: scale(0.8);
+        }
+
+        .insight-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #444;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .insight-item:last-child {
+            border-bottom: none;
+        }
+
+        .insight-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .insight-icon.warning {
+            background: rgba(255, 69, 0, 0.2);
+            color: #FF4500;
+            border: 1px solid rgba(255, 69, 0, 0.3);
+        }
+
+        .insight-icon.success {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4CAF50;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .insight-icon.info {
+            background: rgba(218, 165, 32, 0.2);
+            color: #DAA520;
+            border: 1px solid rgba(218, 165, 32, 0.3);
+        }
+
+        .insight-text {
+            color: #F5E8D8;
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">NEO</div>
+            <div class="view-toggle">
+                <button class="toggle-option active">Today</button>
+                <button class="toggle-option">Compare</button>
+                <button class="toggle-option">Analytics</button>
+            </div>
+        </div>
+        <select class="date-selector">
+            <option>Friday, September 27</option>
+            <option>Saturday, September 28</option>
+        </select>
+    </div>
+
+    <div class="container">
+        <div class="today-stats">
+            <div class="stat-card">
+                <div class="stat-value">6</div>
+                <div class="stat-label">Total Tasks</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">3</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">4h 30m</div>
+                <div class="stat-label">Focused Time</div>
+            </div>
+            <div class="stat-card progress">
+                <div class="stat-value">75%</div>
+                <div class="stat-label">Progress</div>
+            </div>
+        </div>
+
+        <div class="timeline-container">
+            <div class="time-axis">
+                <div class="time-marker" style="top: 0;">
+                    9:00 AM
+                    <div class="time-dot"></div>
+                </div>
+                <div class="time-marker" style="top: 100px;">
+                    10:00 AM
+                    <div class="time-dot"></div>
+                </div>
+                <div class="time-marker" style="top: 200px;">
+                    11:00 AM
+                    <div class="time-dot"></div>
+                </div>
+                <div class="time-marker" style="top: 300px;">
+                    12:00 PM
+                    <div class="time-dot"></div>
+                </div>
+                <div class="time-marker" style="top: 400px;">
+                    1:00 PM
+                    <div class="time-dot"></div>
+                </div>
+                <div class="time-marker" style="top: 500px;">
+                    2:00 PM
+                    <div class="time-dot"></div>
+                </div>
+                <div class="time-marker" style="top: 600px;">
+                    3:00 PM
+                    <div class="time-dot"></div>
+                </div>
+                <div class="time-marker" style="top: 700px;">
+                    4:00 PM
+                    <div class="time-dot"></div>
+                </div>
+                <div class="time-marker" style="top: 800px;">
+                    5:00 PM
+                    <div class="time-dot"></div>
+                </div>
+            </div>
+
+            <div class="current-time-indicator" style="top: 485px;"></div>
+
+            <div class="time-block">
+                <div class="task-card high-priority completed">
+                    <div class="task-header">
+                        <div class="task-time">9:00 - 10:30 AM</div>
+                        <div class="task-duration">90 min</div>
+                    </div>
+                    <div class="task-title">Morning Workout Session</div>
+                    <div class="task-meta">
+                        <div class="task-type">Health & Fitness</div>
+                        <div class="priority-badge">High</div>
+                    </div>
+                    <div class="task-progress">
+                        <div class="task-progress-bar" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="break-indicator">
+                <div class="break-line"></div>
+                <div class="break-text">30 min break</div>
+                <div class="break-line"></div>
+            </div>
+
+            <div class="time-block">
+                <div class="task-card medium-priority completed">
+                    <div class="task-header">
+                        <div class="task-time">11:00 AM - 12:30 PM</div>
+                        <div class="task-duration">90 min</div>
+                    </div>
+                    <div class="task-title">Client Presentation Preparation</div>
+                    <div class="task-meta">
+                        <div class="task-type">Work</div>
+                        <div class="priority-badge">Medium</div>
+                    </div>
+                    <div class="task-progress">
+                        <div class="task-progress-bar" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="time-block">
+                <div class="task-card low-priority completed">
+                    <div class="task-header">
+                        <div class="task-time">1:00 - 2:00 PM</div>
+                        <div class="task-duration">60 min</div>
+                    </div>
+                    <div class="task-title">Lunch & Rest</div>
+                    <div class="task-meta">
+                        <div class="task-type">Personal</div>
+                        <div class="priority-badge">Low</div>
+                    </div>
+                    <div class="task-progress">
+                        <div class="task-progress-bar" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="time-block">
+                <div class="task-card active high-priority glow-effect">
+                    <div class="task-header">
+                        <div class="task-time">2:30 - 4:00 PM</div>
+                        <div class="task-duration">90 min</div>
+                    </div>
+                    <div class="task-title">Data Analysis & Review</div>
+                    <div class="task-meta">
+                        <div class="task-type">Work</div>
+                        <div class="priority-badge">High</div>
+                    </div>
+                    <div class="task-progress">
+                        <div class="task-progress-bar" style="width: 35%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="break-indicator">
+                <div class="break-line"></div>
+                <div class="break-text">90 min break</div>
+                <div class="break-line"></div>
+            </div>
+
+            <div class="time-block">
+                <div class="task-card medium-priority">
+                    <div class="task-header">
+                        <div class="task-time">5:30 - 6:30 PM</div>
+                        <div class="task-duration">60 min</div>
+                    </div>
+                    <div class="task-title">Evening Study Session</div>
+                    <div class="task-meta">
+                        <div class="task-type">Education</div>
+                        <div class="priority-badge">Medium</div>
+                    </div>
+                    <div class="task-progress">
+                        <div class="task-progress-bar" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="add-button">+</button>
+
+    <div class="floating-insights" id="insightsPanel">
+        <div class="insights-badge">3</div>
+        <div class="insights-header" onclick="toggleInsights()">
+            <div class="insights-title">
+                📊 Today's Insights
+            </div>
+            <div class="toggle-icon">▼</div>
+        </div>
+        <div class="insights-content">
+            <div class="insight-item">
+                <div class="insight-icon success">✓</div>
+                <div class="insight-text">You're maintaining excellent consistency with morning workouts!</div>
+            </div>
+            <div class="insight-item">
+                <div class="insight-icon info">💡</div>
+                <div class="insight-text">Your most productive work happens between 2-4 PM. Consider scheduling important tasks during this window.</div>
+            </div>
+            <div class="insight-item">
+                <div class="insight-icon warning">⚠️</div>
+                <div class="insight-text">You have 2 high-priority tasks remaining. Focus on Data Analysis first to stay on track.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleInsights() {
+            const panel = document.getElementById('insightsPanel');
+            panel.classList.toggle('collapsed');
+        }
+
+        // Auto-collapse after 8 seconds for demo
+        setTimeout(() => {
+            const panel = document.getElementById('insightsPanel');
+            if (!panel.classList.contains('collapsed')) {
+                panel.classList.add('collapsed');
+            }
+        }, 8000);
+    </script>
+</body>
+</html>
