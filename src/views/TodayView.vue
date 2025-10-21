@@ -1,97 +1,483 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import AddTaskModal from '../components/AddTaskModal.vue'
+import { ScheduleTimeAPI, TaskCatalogAPI, CURRENT_USER, type Task, type TimeBlock } from '../services/api'
 
-// Sample data for demonstration
-const stats = {
-  totalTasks: 6,
-  completed: 3,
-  focusedTime: '4h 30m',
-  progress: 75
+// Modal state
+const showAddTaskModal = ref(false)
+const selectedHourForNewTask = ref<number | undefined>(undefined)
+
+// Task interface for display
+interface DisplayTask {
+  id: string
+  taskId: string
+  timeBlockId: string  // Added to track which time block this task belongs to
+  timeStart: string
+  timeEnd: string
+  duration: number
+  title: string
+  category: string
+  priority: string
+  progress: number
+  completed: boolean
+  active?: boolean
+  breakBefore?: number
 }
 
-const tasks = [
-  {
-    id: 1,
-    timeStart: '9:00 AM',
-    timeEnd: '10:30 AM',
-    duration: 90,
-    title: 'Morning Workout Session',
-    category: 'Health & Fitness',
-    priority: 'high',
-    progress: 100,
-    completed: true
-  },
-  {
-    id: 2,
-    timeStart: '11:00 AM',
-    timeEnd: '12:30 PM',
-    duration: 90,
-    title: 'Client Presentation Preparation',
-    category: 'Work',
-    priority: 'medium',
-    progress: 100,
-    completed: true,
-    breakBefore: 30
-  },
-  {
-    id: 3,
-    timeStart: '1:00 PM',
-    timeEnd: '2:00 PM',
-    duration: 60,
-    title: 'Lunch & Rest',
-    category: 'Personal',
-    priority: 'low',
-    progress: 100,
-    completed: true
-  },
-  {
-    id: 4,
-    timeStart: '2:30 PM',
-    timeEnd: '4:00 PM',
-    duration: 90,
-    title: 'Data Analysis & Review',
-    category: 'Work',
-    priority: 'high',
-    progress: 35,
-    completed: false,
-    active: true
-  },
-  {
-    id: 5,
-    timeStart: '5:30 PM',
-    timeEnd: '6:30 PM',
-    duration: 60,
-    title: 'Evening Study Session',
-    category: 'Education',
-    priority: 'medium',
-    progress: 0,
-    completed: false,
-    breakBefore: 90
-  }
-]
+// Real data from API
+const stats = ref({
+  totalTasks: 0,
+  completed: 0,
+  focusedTime: '0h 0m',
+  progress: 0
+})
+
+const tasks = ref<DisplayTask[]>([])
+const isLoading = ref(true)
 
 const selectedDate = ref('Friday, September 27')
 const activeView = ref('Today')
+
+// Helper to convert timestamp (number or string) to 12-hour format
+const formatTime = (timestamp: number | string) => {
+  const date = typeof timestamp === 'number' ? new Date(timestamp) : new Date(timestamp)
+  const hours = date.getHours()
+  const minutes = date.getMinutes()
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
+// Helper to get priority label (1-5 to text)
+const getPriorityLabel = (priority: number): string => {
+  const labels = ['lowest', 'low', 'medium', 'high', 'highest']
+  return labels[priority - 1] || 'medium'
+}
+
+// Fetch schedule and tasks from API
+const fetchScheduleData = async () => {
+  try {
+    isLoading.value = true
+
+    // Get user's schedule
+    const schedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+
+    if (!schedules || schedules.length === 0) {
+      tasks.value = []
+      updateStats()
+      return
+    }
+
+    // Get all user's tasks at once
+    let allTasks = []
+    try {
+      allTasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+    } catch (error: any) {
+      // If no tasks exist yet, that's okay
+      if (!error.message?.includes('No tasks found')) {
+        throw error
+      }
+      allTasks = []
+    }
+
+    const taskMap = new Map(allTasks.map(task => [task.taskId, task]))
+
+    // For each time block, create display tasks
+    const displayTasks: DisplayTask[] = []
+
+    for (const timeBlock of schedules) {
+      console.log('Processing time block:', timeBlock.timeBlockId, 'with tasks:', timeBlock.taskIdSet)
+      for (const taskId of timeBlock.taskIdSet) {
+        console.log('Looking for task:', taskId)
+        const task = taskMap.get(taskId)
+        console.log('Found task:', task)
+        if (task) {
+          const displayTask = {
+            id: task.taskId,
+            taskId: task.taskId,
+            timeBlockId: timeBlock.timeBlockId,  // Store the timeBlockId
+            timeStart: formatTime(timeBlock.start),
+            timeEnd: formatTime(timeBlock.end),
+            duration: task.duration,
+            title: task.taskName,
+            category: task.category,
+            priority: getPriorityLabel(task.priority),
+            progress: 0, // We don't track progress yet
+            completed: false,
+            active: false
+          }
+          console.log('Created display task:', displayTask)
+          displayTasks.push(displayTask)
+        } else {
+          console.warn(`Task ${taskId} not found in task list - it may have been deleted`)
+        }
+      }
+    }
+
+    tasks.value = displayTasks
+    updateStats()
+  } catch (error: any) {
+    // If no schedules found, just show empty timeline
+    if (error.message?.includes('No future time blocks')) {
+      tasks.value = []
+      updateStats()
+    } else {
+      console.error('Failed to fetch schedule:', error)
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Update statistics based on tasks
+const updateStats = () => {
+  const total = tasks.value.length
+  const completed = tasks.value.filter(t => t.completed).length
+  const totalMinutes = tasks.value.reduce((sum, t) => sum + t.duration, 0)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  stats.value = {
+    totalTasks: total,
+    completed: completed,
+    focusedTime: `${hours}h ${minutes}m`,
+    progress: total > 0 ? Math.round((completed / total) * 100) : 0
+  }
+}
 
 // Get current time
 const currentTime = ref(new Date())
 const getCurrentTimePosition = () => {
   const hours = currentTime.value.getHours()
   const minutes = currentTime.value.getMinutes()
-  return hours * 100 + (minutes / 60) * 100
+  return hours * HOUR_HEIGHT + (minutes / 60) * HOUR_HEIGHT
 }
 
 // Reference to timeline container for scrolling
 const timelineContainerRef = ref<HTMLElement | null>(null)
+const timelineContentRef = ref<HTMLElement | null>(null)
 
-// Scroll to current time on mount
-import { onMounted } from 'vue'
-onMounted(() => {
+// Hour chunks for hover detection
+const hoveredHour = ref<number | null>(null)
+
+// Track hovered task for delete button
+const hoveredTaskId = ref<string | null>(null)
+
+// Drag and drop state
+const isDragging = ref(false)
+const draggedTask = ref<DisplayTask | null>(null)
+const dragStartPosition = ref({ top: 0, height: 0 })
+const dragPreviewPosition = ref({ top: 0, height: 0 })
+const dragPreviewTime = ref({ start: '', end: '' })
+
+// Debug: Log when hovering
+const setHoveredTask = (taskId: string | null) => {
+  console.log('🎯 HOVER EVENT - Task ID:', taskId)
+  console.log('🎯 Current hoveredTaskId value:', hoveredTaskId.value)
+  hoveredTaskId.value = taskId
+  console.log('🎯 Updated hoveredTaskId value:', hoveredTaskId.value)
+}
+
+// Generate hour chunks (24 hours) - 150px per hour for more space
+const HOUR_HEIGHT = 150
+const MINUTE_HEIGHT = HOUR_HEIGHT / 60  // Height per minute
+const BLOCK_DURATION = 15  // 15-minute blocks
+const BLOCK_HEIGHT = MINUTE_HEIGHT * BLOCK_DURATION  // Height of each 15-min block
+
+// Generate 15-minute blocks (24 hours * 4 blocks per hour = 96 blocks)
+const timeBlocks = Array.from({ length: 24 * 4 }, (_, i) => {
+  const totalMinutes = i * BLOCK_DURATION
+  const hour = Math.floor(totalMinutes / 60)
+  const minute = totalMinutes % 60
+  return {
+    index: i,
+    hour,
+    minute,
+    position: i * BLOCK_HEIGHT,
+    height: BLOCK_HEIGHT
+  }
+})
+
+const hourChunks = Array.from({ length: 24 }, (_, i) => ({
+  hour: i,
+  position: i * HOUR_HEIGHT,
+  height: HOUR_HEIGHT
+}))
+
+// Check if an hour chunk has any tasks
+const hasTaskInHour = (hour: number) => {
+  return tasks.value.some(task => {
+    const taskStartPos = getTaskPosition(task.timeStart)
+    const taskEndPos = taskStartPos + getTaskHeight(task.duration)
+    const hourStartPos = hour * HOUR_HEIGHT
+    const hourEndPos = hourStartPos + HOUR_HEIGHT
+
+    // Check if task overlaps with this hour
+    return (taskStartPos < hourEndPos && taskEndPos > hourStartPos)
+  })
+}
+
+// Open add task modal for specific hour
+const openAddTaskModal = (hour: number) => {
+  selectedHourForNewTask.value = hour
+  showAddTaskModal.value = true
+}
+
+// Drag and drop handlers
+const startDrag = (event: MouseEvent, task: DisplayTask) => {
+  // Don't start drag if clicking on delete button
+  if ((event.target as HTMLElement).classList.contains('task-delete-button')) {
+    return
+  }
+
+  console.log('🎯 Start dragging task:', task.title)
+  isDragging.value = true
+  draggedTask.value = task
+
+  // Store original position
+  dragStartPosition.value = {
+    top: getTaskPosition(task.timeStart),
+    height: getTaskHeight(task.duration)
+  }
+
+  // Initialize preview at current position
+  dragPreviewPosition.value = { ...dragStartPosition.value }
+  dragPreviewTime.value = {
+    start: task.timeStart,
+    end: task.timeEnd
+  }
+}
+
+const onDrag = (event: MouseEvent) => {
+  if (!isDragging.value || !draggedTask.value) return
+
+  event.preventDefault()
+
+  // Calculate position relative to timeline
+  const timelineContent = timelineContentRef.value
+  if (!timelineContent) return
+
+  const timelineRect = timelineContent.getBoundingClientRect()
+  const relativeY = event.clientY - timelineRect.top + (timelineContainerRef.value?.scrollTop || 0)
+
+  // Snap to 15-minute blocks
+  const totalMinutes = (relativeY / HOUR_HEIGHT) * 60
+  const snappedMinutes = Math.round(totalMinutes / BLOCK_DURATION) * BLOCK_DURATION
+
+  // Calculate new start time
+  const newStartHour = Math.floor(snappedMinutes / 60)
+  const newStartMinute = snappedMinutes % 60
+
+  // Keep the same duration
+  const durationMinutes = draggedTask.value.duration
+  const endTotalMinutes = snappedMinutes + durationMinutes
+  const newEndHour = Math.floor(endTotalMinutes / 60)
+  const newEndMinute = endTotalMinutes % 60
+
+  // Update preview position (snapped to 15-min blocks)
+  const snappedPosition = (snappedMinutes / 60) * HOUR_HEIGHT
+  dragPreviewPosition.value = {
+    top: snappedPosition,
+    height: dragStartPosition.value.height
+  }
+
+  // Update preview time display
+  const today = new Date()
+  const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), newStartHour, newStartMinute)
+  const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), newEndHour, newEndMinute)
+
+  dragPreviewTime.value = {
+    start: formatTime(startDate.getTime()),
+    end: formatTime(endDate.getTime())
+  }
+}
+
+const endDrag = async (event: MouseEvent) => {
+  if (!isDragging.value || !draggedTask.value) return
+
+  console.log('🎯 End dragging task:', draggedTask.value.title)
+
+  const task = draggedTask.value
+
+  // Parse the preview time to get timestamps
+  const parseTimeString = (timeStr: string) => {
+    const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i)
+    if (!match) return null
+
+    let hours = parseInt(match[1])
+    const minutes = parseInt(match[2])
+    const period = match[3].toUpperCase()
+
+    if (period === 'PM' && hours !== 12) hours += 12
+    if (period === 'AM' && hours === 12) hours = 0
+
+    const today = new Date()
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes).getTime()
+  }
+
+  const newStartTimestamp = parseTimeString(dragPreviewTime.value.start)
+  const newEndTimestamp = parseTimeString(dragPreviewTime.value.end)
+
+  if (!newStartTimestamp || !newEndTimestamp) {
+    console.error('Failed to parse preview time')
+    isDragging.value = false
+    draggedTask.value = null
+    return
+  }
+
+  console.log('🎯 New time:', dragPreviewTime.value.start, '-', dragPreviewTime.value.end)
+
+  try {
+    // 1. Remove task from old time block
+    console.log('🎯 Step 1: Removing task from old time block')
+    await ScheduleTimeAPI.removeTask(CURRENT_USER, task.taskId, task.timeBlockId)
+
+    // 2. Delete old schedule from task
+    console.log('🎯 Step 2: Deleting old schedule from task')
+    await TaskCatalogAPI.deleteSchedule(CURRENT_USER, task.taskId, task.timeBlockId)
+
+    // 3. Assign task to new time block
+    console.log('🎯 Step 3: Assigning task to new time block')
+    const timeBlockResult = await ScheduleTimeAPI.assignTimeBlock({
+      owner: CURRENT_USER,
+      taskId: task.taskId,
+      start: newStartTimestamp,
+      end: newEndTimestamp
+    })
+
+    // 4. Assign new schedule to task
+    console.log('🎯 Step 4: Assigning new schedule to task')
+    await TaskCatalogAPI.assignSchedule(CURRENT_USER, task.taskId, timeBlockResult.timeBlockId)
+
+    console.log('🎯 Task moved successfully!')
+
+    // Refresh the schedule
+    await fetchScheduleData()
+  } catch (error: any) {
+    console.error('🎯 Failed to move task:', error)
+    alert(`Failed to move task: ${error.message || 'Unknown error'}`)
+  } finally {
+    // Reset drag state
+    isDragging.value = false
+    draggedTask.value = null
+  }
+}
+
+// Delete task from time block
+const deleteTask = async (task: DisplayTask) => {
+  console.log('🗑️ DELETE BUTTON CLICKED for task:', task.title, task.taskId)
+
+  if (!confirm(`Are you sure you want to remove "${task.title}" from the schedule?`)) {
+    console.log('🗑️ Delete cancelled by user')
+    return
+  }
+
+  try {
+    console.log('🗑️ Deleting task:', task.taskId, 'from time block:', task.timeBlockId)
+
+    // Remove the task from the time block
+    await ScheduleTimeAPI.removeTask(CURRENT_USER, task.taskId, task.timeBlockId)
+
+    console.log('🗑️ Task removed from time block successfully')
+
+    // Refresh the schedule
+    await fetchScheduleData()
+    console.log('🗑️ Schedule refreshed')
+  } catch (error: any) {
+    console.error('🗑️ Failed to delete task:', error)
+    alert(`Failed to delete task: ${error.message || 'Unknown error'}`)
+  }
+}
+
+// Handle task submission
+const handleTaskSubmit = async (taskData: any) => {
+  try {
+    console.log('Creating new task:', taskData)
+
+    // Convert start and end time to Unix timestamps
+    const today = new Date()
+    const [startHour, startMinute] = taskData.startTime.split(':')
+    const [endHour, endMinute] = taskData.endTime.split(':')
+
+    const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(startHour), parseInt(startMinute))
+    const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(endHour), parseInt(endMinute))
+
+    const startTimestamp = startDate.getTime()
+    const endTimestamp = endDate.getTime()
+
+    // Create the task first
+    const newTask = await TaskCatalogAPI.createTask({
+      owner: CURRENT_USER,
+      taskName: taskData.taskName,
+      category: taskData.category,
+      duration: taskData.duration, // already in minutes
+      priority: taskData.priority,
+      splittable: taskData.splittable,
+      ...(taskData.deadline && { deadline: taskData.deadline }),
+      ...(taskData.slack && taskData.slack > 0 && { slack: taskData.slack }),
+      ...(taskData.notes && { note: taskData.notes })
+    })
+
+    console.log('Task created - full object:', JSON.stringify(newTask, null, 2))
+    console.log('Task ID for time block assignment:', newTask.taskId)
+    console.log('Task ID type:', typeof newTask.taskId)
+
+    if (!newTask.taskId) {
+      console.error('ERROR: Task created but taskId is missing!', newTask)
+      throw new Error('Task was created but taskId is missing')
+    }
+
+    // Assign the task to a time block (using Unix timestamps)
+    const timeBlockResult = await ScheduleTimeAPI.assignTimeBlock({
+      owner: CURRENT_USER,
+      taskId: newTask.taskId,
+      start: startTimestamp,
+      end: endTimestamp
+    })
+
+    console.log('Time block assigned:', timeBlockResult)
+
+    // Also update the task to reference this time block
+    await TaskCatalogAPI.assignSchedule(
+      CURRENT_USER,
+      newTask.taskId,
+      timeBlockResult.timeBlockId
+    )
+
+    console.log('Task linked to time block')
+
+    // Refresh the schedule to show the new task
+    await fetchScheduleData()
+
+    showAddTaskModal.value = false
+  } catch (error: any) {
+    console.error('Failed to create task:', error)
+    const errorMessage = error.message || 'Unknown error occurred'
+    alert(`Failed to create task: ${errorMessage}`)
+  }
+}
+
+// Scroll to current time on mount and fetch data
+onMounted(async () => {
+  // Fetch schedule data first
+  await fetchScheduleData()
+
+  // Then scroll to current time
   if (timelineContainerRef.value) {
     const currentPos = getCurrentTimePosition()
     // Center the current time in the viewport
     timelineContainerRef.value.scrollTop = currentPos - 200
   }
+
+  // Add global mouse move and mouse up listeners for drag and drop
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', endDrag)
+})
+
+// Clean up event listeners on unmount
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', endDrag)
 })
 
 // Generate 24-hour time markers
@@ -103,7 +489,7 @@ const timeMarkers = Array.from({ length: 24 }, (_, i) => {
   return {
     hour,
     label,
-    position: i * 100 // 100px per hour
+    position: i * HOUR_HEIGHT
   }
 })
 
@@ -121,14 +507,14 @@ const getTaskPosition = (timeString: string) => {
   if (period === 'PM' && hours !== 12) hours += 12
   if (period === 'AM' && hours === 12) hours = 0
 
-  // Calculate position (100px per hour)
-  return hours * 100 + (minutes / 60) * 100
+  // Calculate position using HOUR_HEIGHT
+  return hours * HOUR_HEIGHT + (minutes / 60) * HOUR_HEIGHT
 }
 
 // Calculate task height based on duration
 const getTaskHeight = (duration: number) => {
-  // duration in minutes, convert to pixels (100px per 60 minutes)
-  return (duration / 60) * 100
+  // duration in minutes, convert to pixels using HOUR_HEIGHT
+  return (duration / 60) * HOUR_HEIGHT
 }
 </script>
 
@@ -167,6 +553,10 @@ const getTaskHeight = (duration: number) => {
     </div>
 
     <div class="container">
+      <div v-if="isLoading" class="loading-message">
+        Loading schedule...
+      </div>
+
       <div class="today-stats">
         <div class="stat-card">
           <div class="stat-value">{{ stats.totalTasks }}</div>
@@ -200,12 +590,52 @@ const getTaskHeight = (duration: number) => {
             </div>
           </div>
 
-          <div class="timeline-content">
+          <div class="timeline-content" ref="timelineContentRef">
+            <!-- Hour chunks for hover detection -->
+            <div
+              v-for="chunk in hourChunks"
+              :key="chunk.hour"
+              class="hour-chunk"
+              :style="{ top: chunk.position + 'px', height: chunk.height + 'px' }"
+              @mouseenter="hoveredHour = chunk.hour"
+              @mouseleave="hoveredHour = null"
+            >
+              <!-- Shadow task box for this hour (only show if no tasks in this hour) -->
+              <div
+                v-if="hoveredHour === chunk.hour && !hasTaskInHour(chunk.hour)"
+                class="shadow-task-box"
+                @click="openAddTaskModal(chunk.hour)"
+              >
+                <span class="shadow-task-text">Add Task</span>
+                <button class="shadow-task-button">+</button>
+              </div>
+            </div>
+
             <!-- Current time indicator -->
             <div
               class="current-time-indicator"
               :style="{ top: getCurrentTimePosition() + 'px' }"
             ></div>
+
+            <!-- Drag preview shadow box -->
+            <div
+              v-if="isDragging && draggedTask"
+              class="drag-preview-box"
+              :style="{
+                top: dragPreviewPosition.top + 'px',
+                height: dragPreviewPosition.height + 'px'
+              }"
+            >
+              <div class="preview-header">
+                <div class="preview-time">{{ dragPreviewTime.start }} - {{ dragPreviewTime.end }}</div>
+                <div class="preview-duration">{{ draggedTask.duration }} min</div>
+              </div>
+              <div class="preview-title">{{ draggedTask.title }}</div>
+              <div class="preview-meta">
+                <div class="preview-type">{{ draggedTask.category }}</div>
+                <div class="preview-badge">{{ draggedTask.priority }}</div>
+              </div>
+            </div>
 
             <div
               v-for="task in tasks"
@@ -213,12 +643,20 @@ const getTaskHeight = (duration: number) => {
               class="task-card"
               :class="[
                 `${task.priority}-priority`,
-                { active: task.active, completed: task.completed, 'glow-effect': task.active }
+                {
+                  active: task.active,
+                  completed: task.completed,
+                  'glow-effect': task.active,
+                  'is-dragging': isDragging && draggedTask?.id === task.id
+                }
               ]"
               :style="{
                 top: getTaskPosition(task.timeStart) + 'px',
                 height: getTaskHeight(task.duration) + 'px'
               }"
+              @mousedown="startDrag($event, task)"
+              @mouseenter="setHoveredTask(task.id)"
+              @mouseleave="setHoveredTask(null)"
             >
               <div class="task-header">
                 <div class="task-time">{{ task.timeStart }} - {{ task.timeEnd }}</div>
@@ -232,6 +670,16 @@ const getTaskHeight = (duration: number) => {
               <div class="task-progress">
                 <div class="task-progress-bar" :style="{ width: task.progress + '%' }"></div>
               </div>
+
+              <!-- Delete button (shown on hover) -->
+              <button
+                v-if="hoveredTaskId === task.id"
+                class="task-delete-button"
+                @click="deleteTask(task)"
+                title="Remove from schedule"
+              >
+                ×
+              </button>
             </div>
           </div>
         </div>
@@ -239,6 +687,14 @@ const getTaskHeight = (duration: number) => {
     </div>
 
     <button class="add-button">+</button>
+
+    <!-- Add Task Modal -->
+    <AddTaskModal
+      :show="showAddTaskModal"
+      :selected-hour="selectedHourForNewTask"
+      @close="showAddTaskModal = false"
+      @submit="handleTaskSubmit"
+    />
   </div>
 </template>
 
@@ -349,6 +805,14 @@ const getTaskHeight = (duration: number) => {
   align-items: center;
 }
 
+.loading-message {
+  color: #799EFF;
+  font-size: 16px;
+  padding: 20px;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
 .today-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 180px));
@@ -429,7 +893,16 @@ const getTaskHeight = (duration: number) => {
 .timeline-content {
   position: relative;
   width: 100%;
+  height: 2400px;
   min-height: 2400px;
+}
+
+.hour-chunk {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  cursor: pointer;
+  z-index: 1;
 }
 
 .time-axis {
@@ -485,6 +958,58 @@ const getTaskHeight = (duration: number) => {
   border: 2px solid #1a1a1a;
 }
 
+.shadow-task-box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: 2px dashed rgba(255, 111, 97, 0.6);
+  border-radius: 8px;
+  pointer-events: auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.shadow-task-box:hover {
+  background: rgba(255, 111, 97, 0.05);
+  border-color: rgba(255, 111, 97, 0.8);
+}
+
+.shadow-task-text {
+  font-size: 16px;
+  color: #888;
+  font-weight: 500;
+}
+
+.shadow-task-button {
+  width: 40px;
+  height: 40px;
+  background: #FF6F61;
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(255, 111, 97, 0.4);
+  transition: all 0.2s ease;
+}
+
+.shadow-task-box:hover .shadow-task-button {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(255, 111, 97, 0.6);
+}
+
 .task-card {
   background: #2a2a2a;
   border-radius: 8px;
@@ -494,12 +1019,13 @@ const getTaskHeight = (duration: number) => {
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: absolute;
-  overflow: hidden;
+  overflow: visible;
   width: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   min-height: 80px;
+  z-index: 10;
 }
 
 .task-card::before {
@@ -536,6 +1062,148 @@ const getTaskHeight = (duration: number) => {
   transform: translateX(6px) translateY(-2px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
   border-color: #555;
+  z-index: 20;
+}
+
+.task-card.is-dragging {
+  opacity: 0.3;
+  cursor: grabbing !important;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.task-card:not(.is-dragging) {
+  cursor: grab;
+}
+
+/* Drag preview shadow box */
+.drag-preview-box {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  background: rgba(121, 158, 255, 0.15);
+  border: 2px dashed rgba(121, 158, 255, 0.8);
+  border-radius: 8px;
+  padding: 16px;
+  box-sizing: border-box;
+  z-index: 50;
+  pointer-events: none;
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: rgba(121, 158, 255, 0.8);
+    background: rgba(121, 158, 255, 0.15);
+  }
+  50% {
+    border-color: rgba(121, 158, 255, 1);
+    background: rgba(121, 158, 255, 0.25);
+  }
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.preview-time {
+  font-size: 11px;
+  color: #799EFF;
+  font-weight: 600;
+  background: rgba(121, 158, 255, 0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(121, 158, 255, 0.3);
+  white-space: nowrap;
+}
+
+.preview-duration {
+  font-size: 10px;
+  color: #799EFF;
+  background: rgba(121, 158, 255, 0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  border: 1px solid rgba(121, 158, 255, 0.3);
+  white-space: nowrap;
+}
+
+.preview-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #799EFF;
+  margin-bottom: 12px;
+  line-height: 1.3;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.preview-type {
+  font-size: 11px;
+  color: #799EFF;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.preview-badge {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(121, 158, 255, 0.3);
+  color: #799EFF;
+  border: 1px solid rgba(121, 158, 255, 0.4);
+}
+
+.task-delete-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #FF3232;
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 22px;
+  font-weight: bold;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(255, 50, 50, 0.6);
+  padding: 0;
+  margin: 0;
+  pointer-events: auto;
+}
+
+.task-delete-button:hover {
+  background: #FF0000;
+  transform: scale(1.15);
+  box-shadow: 0 6px 16px rgba(255, 0, 0, 0.8);
+}
+
+.task-delete-button:active {
+  transform: scale(0.95);
 }
 
 .task-card.completed {
@@ -553,7 +1221,7 @@ const getTaskHeight = (duration: number) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   gap: 8px;
 }
 
@@ -580,25 +1248,23 @@ const getTaskHeight = (duration: number) => {
 }
 
 .task-title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
   color: #F5E8D8;
-  margin-bottom: 8px;
-  line-height: 1.4;
+  margin-bottom: 12px;
+  line-height: 1.3;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .task-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  margin-top: auto;
+  margin-bottom: 10px;
+  margin-top: 4px;
 }
 
 .task-type {
