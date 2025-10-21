@@ -55,6 +55,10 @@ const navigateToLogging = () => {
   router.push('/logging')
 }
 
+const navigateToTasks = () => {
+  router.push('/tasks')
+}
+
 // Computed stats
 const elapsedMinutes = computed(() => Math.floor(elapsedTime.value / 60000))
 const remainingMinutes = computed(() => Math.max(0, plannedDuration.value - elapsedMinutes.value))
@@ -551,6 +555,7 @@ onUnmounted(() => {
             <button class="toggle-option" @click="navigateToToday">Today</button>
             <button class="toggle-option" @click="navigateToCompare">Compare</button>
             <button class="toggle-option active" @click="navigateToLogging">Logging</button>
+            <button class="toggle-option" @click="navigateToTasks">Tasks</button>
           </div>
         </div>
       </div>

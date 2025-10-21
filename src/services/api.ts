@@ -190,8 +190,12 @@ export interface Session {
 // RoutineLog APIs
 export const RoutineLogAPI = {
   async getUserSessions(owner: string): Promise<Session[]> {
-    const response = await apiCall<{ sessionTable: Session[] }>('/api/RoutineLog/_getUserSessions', { owner })
-    return response.sessionTable
+    const response = await apiCall<{ sessionTable: any[] }>('/api/RoutineLog/_getUserSessions', { owner })
+    // Map _id to sessionId for consistency with frontend
+    return response.sessionTable.map(session => ({
+      ...session,
+      sessionId: session._id || session.sessionId
+    }))
   },
 
   async createSession(params: {
@@ -259,6 +263,88 @@ export const ScheduleTimeAPI = {
       owner,
       taskId,
       timeBlockId,
+    })
+  },
+}
+
+// AdaptiveSchedule interfaces
+interface AdaptiveBlockResponse {
+  _id: string
+  owner: string
+  start: number  // Unix timestamp in milliseconds
+  end: number    // Unix timestamp in milliseconds
+  taskIdSet: string[]
+}
+
+export interface AdaptiveBlock {
+  timeBlockId: string
+  owner: string
+  start: number  // Unix timestamp in milliseconds
+  end: number    // Unix timestamp in milliseconds
+  taskIdSet: string[]
+}
+
+export interface DroppedTask {
+  taskId: string
+  owner: string
+  reason: string
+}
+
+// Helper to convert API response to AdaptiveBlock
+function mapAdaptiveBlockResponse(response: AdaptiveBlockResponse): AdaptiveBlock {
+  return {
+    timeBlockId: response._id,
+    owner: response.owner,
+    start: response.start,
+    end: response.end,
+    taskIdSet: response.taskIdSet
+  }
+}
+
+// AdaptiveSchedule APIs
+export const AdaptiveScheduleAPI = {
+  async getAdaptiveSchedule(owner: string): Promise<AdaptiveBlock[]> {
+    const response = await apiCall<{ adaptiveBlockTable: AdaptiveBlockResponse[] }>('/api/AdaptiveSchedule/_getAdaptiveSchedule', { owner })
+    return response.adaptiveBlockTable.map(mapAdaptiveBlockResponse)
+  },
+
+  async getDroppedTasks(owner: string): Promise<DroppedTask[]> {
+    const response = await apiCall<{ droppedTaskSet: DroppedTask[] }>('/api/AdaptiveSchedule/_getDroppedTask', { owner })
+    return response.droppedTaskSet
+  },
+
+  async requestAdaptiveScheduleAI(owner: string, contextedPrompt: string): Promise<{
+    adaptiveBlockTable: AdaptiveBlock[]
+    droppedTaskSet: DroppedTask[]
+  }> {
+    const response = await apiCall<{
+      adaptiveBlockTable: AdaptiveBlockResponse[]
+      droppedTaskSet: DroppedTask[]
+    }>('/api/AdaptiveSchedule/requestAdaptiveScheduleAI', {
+      owner,
+      contexted_prompt: contextedPrompt
+    })
+    return {
+      adaptiveBlockTable: response.adaptiveBlockTable.map(mapAdaptiveBlockResponse),
+      droppedTaskSet: response.droppedTaskSet
+    }
+  },
+
+  async assignAdaptiveSchedule(params: {
+    owner: string
+    taskId: string
+    start: string | number
+    end: string | number
+  }): Promise<{ timeBlockId: string }> {
+    // Convert ISO strings to Unix timestamps if needed
+    const startTimestamp = typeof params.start === 'string' ? new Date(params.start).getTime() : params.start
+    const endTimestamp = typeof params.end === 'string' ? new Date(params.end).getTime() : params.end
+
+    return apiCall<{ timeBlockId: string }>('/api/AdaptiveSchedule/assignAdaptiveSchedule', {
+      owner: params.owner,
+      taskId: params.taskId,
+      start: startTimestamp,
+      end: endTimestamp
     })
   },
 }

@@ -26,6 +26,13 @@
             >
               Logging
             </button>
+            <button
+              class="toggle-option"
+              :class="{ active: activeView === 'Tasks' }"
+              @click="navigateToTasks"
+            >
+              Tasks
+            </button>
           </div>
         </div>
         <div class="date-navigation">
@@ -68,7 +75,7 @@
       </div>
 
       <div class="optimize-button-container">
-        <button class="optimize-schedule-button">Optimize Schedule</button>
+        <button class="optimize-schedule-button" @click="handleOptimizeSchedule">Optimize Schedule</button>
       </div>
 
       <div class="legend">
@@ -120,6 +127,27 @@
             </div>
           </div>
 
+          <!-- Adaptive blocks (right side) -->
+          <div
+            v-for="(adaptiveBlock, index) in adaptiveBlocksWithTasks"
+            :key="`adaptive-${index}`"
+            class="adaptive-block-slot"
+            :style="{
+              top: getComparisonPosition(adaptiveBlock.start) + 'px',
+              height: getAdaptiveBlockHeight(adaptiveBlock) + 'px'
+            }"
+          >
+            <div
+              v-for="task in adaptiveBlock.tasks"
+              :key="task.taskId"
+              class="adaptive-task"
+            >
+              <div class="task-time">{{ formatTime(adaptiveBlock.start) }} - {{ formatTime(adaptiveBlock.end) }}</div>
+              <div class="task-title">{{ task.taskName }}</div>
+              <div class="task-duration">{{ formatDuration(adaptiveBlock.end - adaptiveBlock.start) }} • {{ task.category }}</div>
+            </div>
+          </div>
+
           <!-- Comparison slots -->
           <div
             v-for="(comparison, index) in comparisons"
@@ -136,8 +164,9 @@
               <div v-if="comparison.isPerfectMatch" class="task-perfect-match">
                 <div class="task-time">{{ comparison.timeRange }}</div>
                 <div class="task-title">{{ comparison.taskName }}</div>
-                <div class="task-duration">{{ comparison.duration }} • {{ comparison.category }}</div>
-                <div class="variance-text positive">{{ comparison.varianceText }}</div>
+                <div v-if="!isShortSession(comparison.duration)" class="task-meta">
+                  <span class="task-duration">{{ comparison.duration }} • {{ comparison.category }}</span>
+                </div>
               </div>
 
               <!-- Mismatch -->
@@ -145,9 +174,11 @@
                 <div v-if="comparison.planned" class="planned-task">
                   <div class="task-time">{{ comparison.planned.timeRange }}</div>
                   <div class="task-title">{{ comparison.planned.taskName }}</div>
-                  <div class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</div>
-                  <div v-if="comparison.planned.varianceText" class="variance-text">
-                    {{ comparison.planned.varianceText }}
+                  <div class="task-meta">
+                    <span v-if="!isShortSession(comparison.planned.duration)" class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</span>
+                    <span v-if="comparison.planned.varianceText" class="variance-badge" :class="{ 'skipped': comparison.planned.varianceText === 'Skipped' }">
+                      {{ comparison.planned.varianceText }}
+                    </span>
                   </div>
                 </div>
                 <div v-else class="no-task">{{ comparison.noPlannedText || 'No planned task' }}</div>
@@ -159,9 +190,11 @@
                 <div v-if="comparison.actual" class="actual-task">
                   <div class="task-time">{{ comparison.actual.timeRange }}</div>
                   <div class="task-title">{{ comparison.actual.taskName }}</div>
-                  <div class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</div>
-                  <div v-if="comparison.actual.varianceText" class="variance-text">
-                    {{ comparison.actual.varianceText }}
+                  <div class="task-meta">
+                    <span v-if="!isShortSession(comparison.actual.duration)" class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</span>
+                    <span v-if="comparison.actual.varianceText" class="variance-badge">
+                      {{ comparison.actual.varianceText }}
+                    </span>
                   </div>
                 </div>
                 <div v-else class="no-task">{{ comparison.noActualText || 'Task skipped' }}</div>
@@ -180,6 +213,20 @@
       @close="closeAddTaskModal"
       @submit="handleTaskSubmit"
     />
+
+    <!-- Preference Modal -->
+    <PreferenceModal
+      :show="showPreferenceModal"
+      @close="closePreferenceModal"
+      @proceed="handlePreferenceProceed"
+    />
+
+    <!-- Loading Modal -->
+    <LoadingModal
+      :show="showLoadingModal"
+      title="AI is Thinking..."
+      description="Creating your optimized schedule. This may take a moment."
+    />
   </div>
 </template>
 
@@ -187,7 +234,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AddTaskModal from '../components/AddTaskModal.vue'
-import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, CURRENT_USER, type Task, type Session, type TimeBlock } from '../services/api'
+import PreferenceModal from '../components/PreferenceModal.vue'
+import LoadingModal from '../components/LoadingModal.vue'
+import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, AdaptiveScheduleAPI, CURRENT_USER, type Task, type Session, type TimeBlock, type AdaptiveBlock, type DroppedTask } from '../services/api'
 
 // Helper to round timestamp to nearest 30 minutes
 const roundToNearest30Min = (timestamp: number): number => {
@@ -276,6 +325,10 @@ const navigateToLogging = () => {
   router.push('/logging')
 }
 
+const navigateToTasks = () => {
+  router.push('/tasks')
+}
+
 // Stats
 const stats = ref({
   totalTasks: 0,
@@ -354,26 +407,33 @@ const getComparisonHeight = (comparison: Comparison) => {
   return HOUR_HEIGHT + 16
 }
 
+// Calculate height for an adaptive block
+const getAdaptiveBlockHeight = (block: AdaptiveBlock) => {
+  const durationMs = block.end - block.start
+  const durationMinutes = durationMs / (1000 * 60)
+  return (durationMinutes / 60) * HOUR_HEIGHT + 16 // Add padding
+}
+
 // Helper function to parse duration strings to minutes
 const parseDurationToMinutes = (durationStr: string): number => {
   let totalMinutes = 0
 
   // Extract hours
   const hourMatch = durationStr.match(/(\d+)\s*h(?:our)?s?/i)
-  if (hourMatch) {
+  if (hourMatch && hourMatch[1]) {
     totalMinutes += parseInt(hourMatch[1]) * 60
   }
 
   // Extract minutes
-  const minuteMatch = durationStr.match(/(\d+)\s*m(?:inute)?s?/i)
-  if (minuteMatch) {
+  const minuteMatch = durationStr.match(/(\d+)\s*m(?:in(?:ute)?)?s?/i)
+  if (minuteMatch && minuteMatch[1]) {
     totalMinutes += parseInt(minuteMatch[1])
   }
 
   // If no hours or minutes found, try to parse just numbers (assume minutes)
   if (totalMinutes === 0) {
     const numberMatch = durationStr.match(/(\d+)/)
-    if (numberMatch) {
+    if (numberMatch && numberMatch[1]) {
       totalMinutes = parseInt(numberMatch[1])
     } else {
       // Default to 60 minutes (1 hour)
@@ -384,6 +444,13 @@ const parseDurationToMinutes = (durationStr: string): number => {
   return totalMinutes
 }
 
+// Helper to check if a session is short (30 minutes or less)
+const isShortSession = (durationStr: string | undefined): boolean => {
+  if (!durationStr) return false
+  const totalMinutes = parseDurationToMinutes(durationStr)
+  return totalMinutes <= 30
+}
+
 // Helper function to parse duration strings to pixel height
 const parseDurationToPixels = (durationStr: string): number => {
   // Handle formats like "1 hour", "30 minutes", "1h 30m", "1 hour 30 minutes"
@@ -391,20 +458,20 @@ const parseDurationToPixels = (durationStr: string): number => {
 
   // Extract hours
   const hourMatch = durationStr.match(/(\d+)\s*h(?:our)?s?/i)
-  if (hourMatch) {
+  if (hourMatch && hourMatch[1]) {
     totalMinutes += parseInt(hourMatch[1]) * 60
   }
 
   // Extract minutes
-  const minuteMatch = durationStr.match(/(\d+)\s*m(?:inute)?s?/i)
-  if (minuteMatch) {
+  const minuteMatch = durationStr.match(/(\d+)\s*m(?:in(?:ute)?)?s?/i)
+  if (minuteMatch && minuteMatch[1]) {
     totalMinutes += parseInt(minuteMatch[1])
   }
 
   // If no hours or minutes found, try to parse just numbers (assume minutes)
   if (totalMinutes === 0) {
     const numberMatch = durationStr.match(/(\d+)/)
-    if (numberMatch) {
+    if (numberMatch && numberMatch[1]) {
       totalMinutes = parseInt(numberMatch[1])
     } else {
       // Default to 60 minutes (1 hour)
@@ -453,6 +520,17 @@ const isLoadingComparisons = ref(false)
 const showAddTaskModal = ref(false)
 const selectedHourForNewTask = ref(9)
 const selectedMinuteForNewTask = ref(0)
+
+// Preference Modal state
+const showPreferenceModal = ref(false)
+const showLoadingModal = ref(false)
+
+// Adaptive schedule state
+interface AdaptiveBlockWithTasks extends AdaptiveBlock {
+  tasks: Task[]
+}
+
+const adaptiveBlocksWithTasks = ref<AdaptiveBlockWithTasks[]>([])
 
 // Empty time slots for adding tasks
 interface EmptyTimeSlot {
@@ -555,7 +633,7 @@ const handleTaskSubmit = async (taskData: any) => {
     }
 
     // Check if a time block already exists for this time range
-    let allSchedules = []
+    let allSchedules: TimeBlock[] = []
     try {
       allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
     } catch (error: any) {
@@ -576,7 +654,7 @@ const handleTaskSubmit = async (taskData: any) => {
     if (existingBlock) {
       timeBlockId = existingBlock.timeBlockId
       if (!existingBlock.taskIdSet.includes(newTask.taskId)) {
-        const result = await ScheduleTimeAPI.assignTimeBlock({
+        await ScheduleTimeAPI.assignTimeBlock({
           owner: CURRENT_USER,
           taskId: newTask.taskId,
           start: startTimestamp,
@@ -614,6 +692,210 @@ const handleTaskSubmit = async (taskData: any) => {
   }
 }
 
+// Optimize Schedule handlers
+const handleOptimizeSchedule = () => {
+  showPreferenceModal.value = true
+}
+
+const closePreferenceModal = () => {
+  showPreferenceModal.value = false
+}
+
+const createAdaptiveSchedulePrompt = (
+  owner: string,
+  tasks: Task[],
+  timeBlocks: TimeBlock[],
+  sessions: Session[],
+  preference: string
+): string => {
+  const currentTime = new Date().toISOString()
+
+  // Helper to format tasks
+  const tasksToString = (tasks: Task[]) => {
+    return tasks.map(t => {
+      let taskStr = `- Task ID: ${t.taskId}\n`
+      taskStr += `  Name: ${t.taskName}\n`
+      taskStr += `  Category: ${t.category}\n`
+      taskStr += `  Duration: ${t.duration} minutes\n`
+      taskStr += `  Priority: ${t.priority}\n`
+      taskStr += `  Splittable: ${t.splittable}\n`
+      if (t.deadline) taskStr += `  Deadline: ${t.deadline}\n`
+      if (t.slack) taskStr += `  Slack: ${t.slack} minutes\n`
+      if (t.preDependence && t.preDependence.length > 0) {
+        taskStr += `  Pre-dependencies: ${t.preDependence.join(', ')}\n`
+      }
+      if (t.note) taskStr += `  Note: ${t.note}\n`
+      return taskStr
+    }).join('\n')
+  }
+
+  // Helper to format schedule
+  const scheduleToString = (blocks: TimeBlock[]) => {
+    return blocks.map(b => {
+      const start = new Date(b.start).toISOString()
+      const end = new Date(b.end).toISOString()
+      return `- Time Block: ${start} to ${end}\n  Tasks: ${b.taskIdSet.join(', ')}`
+    }).join('\n')
+  }
+
+  // Helper to format routine
+  const routineToString = (sessions: Session[]) => {
+    return sessions.filter(s => s.start && s.end).map(s => {
+      return `- Session: ${s.sessionName}\n  Start: ${s.start}\n  End: ${s.end}\n  Linked Task: ${s.linkedTaskId || 'None'}`
+    }).join('\n')
+  }
+
+  return `
+You are a helpful AI assistant that creates optimal adaptive schedules for users based on task analysis, planned schedules, actual routines, and user preferences.
+
+USER: ${owner}
+CURRENT TIME: ${currentTime}
+** CRITICAL: You MUST schedule all time blocks to start at or after this current time. Do NOT schedule anything before ${currentTime}. **
+
+USER PREFERENCES:
+${preference}
+
+TASKS TO SCHEDULE:
+** CRITICAL: ALL tasks listed below MUST be scheduled. Each task represents work that still needs to be done. **
+${tasksToString(tasks)}
+
+PLANNED SCHEDULE (Original Plan):
+${scheduleToString(timeBlocks)}
+
+ACTUAL ROUTINE (What Actually Happened):
+${routineToString(sessions)}
+
+TASK PRIORITY SCALE (1-5), determines how urgent the task is:
+- Priority 1 (Critical): Must be done ASAP - urgent deadlines, emergencies
+- Priority 2 (Important): Should be done soon - upcoming deadlines, high impact
+- Priority 3 (Regular): Necessary but not urgent
+- Priority 4 (Low): Can be done later
+- Priority 5 (Optional): Can be done if time permits - not time-sensitive or important
+
+ANALYSIS REQUIREMENTS:
+1. Analyze the deviation between the planned schedule and actual routine
+2. Identify tasks that were not completed or were interrupted
+3. Consider task priorities (1 = highest priority, 5 = lowest priority), deadlines, and dependencies
+4. Schedule critical tasks (priority 1-2) before lower priority tasks
+5. Consider user preferences for scheduling
+6. Respect task constraints (duration, splittable, slack)
+7. **CONCURRENCY OPTIMIZATION (ALWAYS APPLY): Whenever you have a PASSIVE/BACKGROUND task (laundry, dishwashing - tasks that run automatically), you MUST ALWAYS schedule it concurrently with an active task by creating OVERLAPPING time blocks. This is MANDATORY, not optional. Active tasks (cleaning room, organizing notes, studying) CANNOT be done concurrently with each other. RULE: If you see "Do Laundry" or "Dishwashing", immediately find an active task to overlap it with.**
+
+SCHEDULING CONSTRAINTS:
+- Times must be in ISO 8601 format (e.g., "2025-10-04T14:00:00Z")
+- Start time must be before end time
+- ALL time blocks MUST start at or after the CURRENT TIME if provided
+- **CRITICAL DURATION RULE: Each time block's duration MUST be at least as long as the longest task in that block (NOT the sum). When tasks are concurrent/overlapping in separate blocks, each block is evaluated independently.**
+- For non-splittable tasks, the block must be at least as long as the task duration
+- For splittable tasks, you can either: (1) create a single block with duration >= task duration, OR (2) split across multiple blocks where sum of block durations >= task duration
+- **CONCURRENCY CLARIFICATION: When creating overlapping blocks, each block duration only needs to match its own task duration. Example: Laundry (60 min) in Block A from 1:40-2:40 PM, Study (120 min) in Block B from 1:40-3:40 PM - this is CORRECT and maximizes time savings.**
+- High priority tasks should be scheduled first
+- Respect task deadlines
+- Consider dependencies (preDependence tasks must be scheduled before dependent tasks)
+- If a task is splittable, it can be divided across multiple blocks. Otherwise, do not divide it across multiple **non-consecutive blocks**.
+- **MANDATORY: You MUST ALWAYS create overlapping/concurrent blocks for passive tasks (laundry, dishwashing, etc.). This means creating separate blocks with the same or overlapping time ranges. For example, if you have laundry and studying, ALWAYS create two blocks that overlap in time - NEVER schedule passive tasks sequentially. This is required even if you have enough time, as it frees up time for additional tasks.**
+
+CRITICAL REQUIREMENTS:
+1. ONLY schedule the tasks listed above - do NOT add any new tasks
+2. Ensure all scheduled blocks have valid ISO timestamps
+3. Assign tasks based on priority and deadline urgency
+4. **ABSOLUTE DEADLINE CONSTRAINT: If a task has a deadline, it MUST be completed BEFORE that deadline. Do NOT schedule any part of the task after its deadline.**
+5. **If there is insufficient time to complete all tasks before their deadlines, prioritize higher priority tasks first**
+6. **DURATION CONSTRAINT (FLEXIBLE WHEN CONSTRAINED): Ideally give each task its FULL required duration. However, when time is severely constrained and you have leftover time that can't fit a full task, it's acceptable to schedule a partial task duration rather than leaving the time empty. For example, if you have 20 minutes left and a 60-minute task, schedule it for 20 minutes rather than dropping it entirely.**
+7. Consider the actual routine and how it deviates from the schedule to understand what time blocks are realistic
+8. Provide reasoning for why actual routine deviated from the original planned schedule
+9. For a task with a long duration and is splittable, consider splitting it into multiple non-consecutive time blocks for better focus
+10. If time is insufficient to schedule all tasks, prioritize tasks with urgent deadlines (approaching soon) or higher priority (1-2); only drop tasks if absolutely no time remains
+
+Return your response as a JSON object with this exact structure:
+{
+  "analysis": "Brief analysis of why the schedule deviated from the routine and key insights",
+  "adaptiveBlocks": [
+    {
+      "start": "ISO timestamp",
+      "end": "ISO timestamp",
+      "taskIds": ["taskId1", "taskId2"]
+    }
+  ],
+  "droppedTaskIds": ["taskId3", "taskId4"]
+}
+
+EXAMPLE 1 - Deadline constraint:
+- If task-1 has deadline at 5 PM and current time is 12 PM
+- Available time: 5 hours (300 minutes)
+- If task-1 needs 100 min + other high priority tasks need 200 min = 300 min total
+- Low priority tasks (task-5, task-6) CANNOT fit before deadline
+- CORRECT: Put task-5 and task-6 in droppedTaskIds
+- WRONG: Schedule tasks after the 5 PM deadline
+
+EXAMPLE 2 - Concurrency optimization (ALWAYS REQUIRED FOR PASSIVE TASKS):
+- Laundry (60 min, PASSIVE) + Study (120 min, ACTIVE)
+- MANDATORY APPROACH: Always overlap passive tasks - create these blocks:
+  Block A: {"start": "2025-10-04T14:00:00Z", "end": "2025-10-04T15:00:00Z", "taskIds": ["laundry-task-id"]},
+  Block B: {"start": "2025-10-04T14:00:00Z", "end": "2025-10-04T16:00:00Z", "taskIds": ["study-task-id"]}
+- Result: Both complete by 4:00 PM, saving 60 minutes for other tasks
+- WRONG: Scheduling laundry sequentially (3:40-4:40) after studying wastes 60 minutes
+- WRONG: Clean Room + Organize Notes overlapping (both ACTIVE - cannot be concurrent)
+- WRONG: Any scheduling that extends past the deadline
+
+Return ONLY the JSON object, no additional text.`
+}
+
+const handlePreferenceProceed = async (preference: string) => {
+  try {
+    // Close preference modal and show loading
+    showPreferenceModal.value = false
+    showLoadingModal.value = true
+
+    // Fetch all required data
+    const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+    const timeBlocks = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER).catch(() => [])
+    const sessions = await RoutineLogAPI.getUserSessions(CURRENT_USER).catch(() => [])
+
+    // Create prompt
+    const prompt = createAdaptiveSchedulePrompt(
+      CURRENT_USER,
+      tasks,
+      timeBlocks,
+      sessions,
+      preference
+    )
+
+    // Call AI API
+    const result = await AdaptiveScheduleAPI.requestAdaptiveScheduleAI(CURRENT_USER, prompt)
+
+    // Fetch task details for each adaptive block
+    const blocksWithTasks: AdaptiveBlockWithTasks[] = []
+    for (const block of result.adaptiveBlockTable) {
+      const blockTasks: Task[] = []
+      for (const taskId of block.taskIdSet) {
+        try {
+          const task = await TaskCatalogAPI.getTask(CURRENT_USER, taskId)
+          blockTasks.push(task)
+        } catch (error) {
+          console.error(`Failed to fetch task ${taskId}:`, error)
+        }
+      }
+      blocksWithTasks.push({
+        ...block,
+        tasks: blockTasks
+      })
+    }
+
+    // Store results
+    adaptiveBlocksWithTasks.value = blocksWithTasks
+
+    // Refresh the view to show adaptive blocks
+    await fetchComparisons()
+
+    showLoadingModal.value = false
+  } catch (error) {
+    console.error('Failed to generate adaptive schedule:', error)
+    showLoadingModal.value = false
+    alert('Failed to generate adaptive schedule. Please try again.')
+  }
+}
+
 // Fetch and process comparisons
 const fetchComparisons = async () => {
   try {
@@ -623,7 +905,9 @@ const fetchComparisons = async () => {
     let plannedSchedules: TimeBlock[] = []
     try {
       plannedSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+      console.log(`Fetched ${plannedSchedules.length} planned time blocks:`, plannedSchedules)
     } catch (error: any) {
+      console.error('Error fetching planned schedules:', error)
       if (error.message?.includes('No future time blocks found')) {
         plannedSchedules = []
       } else {
@@ -646,7 +930,9 @@ const fetchComparisons = async () => {
     const processedComparisons: Comparison[] = []
 
     // 3. Iterate through all planned schedules
+    console.log(`Processing ${plannedSchedules.length} planned schedules`)
     for (const timeBlock of plannedSchedules) {
+      console.log(`TimeBlock: ${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}, tasks: ${timeBlock.taskIdSet.length}`)
       for (const taskId of timeBlock.taskIdSet) {
         // Get task details
         let task: Task | null = null
@@ -657,19 +943,27 @@ const fetchComparisons = async () => {
           continue
         }
 
+        console.log(`Processing planned task: ${task.taskName} (${taskId})`)
+
         const plannedStart = roundToNearest30Min(timeBlock.start)
         const plannedEnd = roundToNearest30Min(timeBlock.end)
 
         // Find matching session
         const matchingSession = userSessions.find(session => {
-          if (!session.start || !session.end || session.linkedTaskId !== taskId) return false
+          const hasTime = session.start && session.end
+          const linkedMatches = session.linkedTaskId === taskId
+          if (!hasTime || !linkedMatches) {
+            return false
+          }
           const sessionStart = roundToNearest30Min(new Date(session.start).getTime())
           const sessionEnd = roundToNearest30Min(new Date(session.end).getTime())
-          return sessionStart === plannedStart && sessionEnd === plannedEnd
+          const timeMatches = sessionStart === plannedStart && sessionEnd === plannedEnd
+          return timeMatches
         })
 
         if (matchingSession) {
           // Perfect match case
+          console.log(`Matched session ${matchingSession.sessionName} to task ${task.taskName}`)
           matchedSessions.add(matchingSession.sessionId)
           processedComparisons.push({
             isPerfectMatch: true,
@@ -745,8 +1039,25 @@ const fetchComparisons = async () => {
     }
 
     // Add unplanned sessions (sessions without matching planned tasks)
+    console.log('Checking for unplanned sessions...')
+    console.log('Total sessions:', userSessions.length)
+    console.log('Matched sessions:', matchedSessions.size)
+    console.log('Matched session IDs:', Array.from(matchedSessions))
+
     for (const session of userSessions) {
+      const isMatched = matchedSessions.has(session.sessionId)
+      const hasStart = !!session.start
+      const hasEnd = !!session.end
+      console.log(`Session: ${session.sessionName}`)
+      console.log(`  - sessionId: ${session.sessionId}`)
+      console.log(`  - start: ${session.start} (has: ${hasStart})`)
+      console.log(`  - end: ${session.end} (has: ${hasEnd})`)
+      console.log(`  - linkedTaskId: ${session.linkedTaskId}`)
+      console.log(`  - isMatched: ${isMatched}`)
+      console.log(`  - Will add to unplanned: ${!isMatched && hasStart && hasEnd}`)
+
       if (!matchedSessions.has(session.sessionId) && session.start && session.end) {
+        console.log(`✓ ADDING unplanned session: ${session.sessionName}`)
         const sessionStart = new Date(session.start).getTime()
         const sessionEnd = new Date(session.end).getTime()
         const actualDuration = sessionEnd - sessionStart
@@ -757,7 +1068,7 @@ const fetchComparisons = async () => {
             const task = await TaskCatalogAPI.getTask(CURRENT_USER, session.linkedTaskId)
             category = task.category
           } catch (error) {
-            console.error(`Failed to fetch task for session ${session.sessionId}`)
+            console.error(`Failed to fetch task ${session.linkedTaskId} for session ${session.sessionId}:`, error)
           }
         }
 
@@ -1170,16 +1481,20 @@ onMounted(async () => {
 .actual-task {
   flex: 1;
   background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  border: 2px solid;
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  border: 1.5px solid;
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
   height: 100%; /* Fill the full height of task-comparison */
   box-sizing: border-box; /* Include padding in height calculation */
   margin: 2px 0; /* Add subtle vertical margin for visual separation */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .planned-task {
@@ -1195,59 +1510,66 @@ onMounted(async () => {
 .planned-task::before {
   content: 'PLANNED';
   position: absolute;
-  top: -8px;
+  top: 6px;
   left: 8px;
   background: #2A2A2A;
-  color: #F5E8D8;
-  font-size: 9px;
-  font-weight: 700;
+  color: #CCC;
+  font-size: 7px;
+  font-weight: 600;
   letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #F5E8D8;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(245, 232, 216, 0.3);
+  opacity: 0.7;
 }
 
 .actual-task::before {
   content: 'ACTUAL';
   position: absolute;
-  top: -8px;
+  top: 6px;
   left: 8px;
   background: #2A1F1A;
-  color: #FF6F61;
-  font-size: 9px;
-  font-weight: 700;
+  color: #DDD;
+  font-size: 7px;
+  font-weight: 600;
   letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #FF6F61;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 111, 97, 0.3);
+  opacity: 0.7;
 }
 
 .task-perfect-match {
   flex: 1;
   background: linear-gradient(135deg, #1A2A1A 0%, #2A3A2A 100%);
   border: 2px solid #4CAF50;
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: 8px;
+  padding: 8px 10px;
   position: relative;
   height: 100%; /* Fill the full height of task-comparison */
   box-sizing: border-box; /* Include padding in height calculation */
   margin: 2px 0; /* Add subtle vertical margin for visual separation */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .task-perfect-match::before {
   content: 'PERFECT MATCH ✓';
   position: absolute;
-  top: -8px;
+  top: 6px;
   left: 50%;
   transform: translateX(-50%);
   background: #1A2A1A;
   color: #4CAF50;
-  font-size: 9px;
+  font-size: 7px;
   font-weight: 700;
   letter-spacing: 0.5px;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
   border: 1px solid #4CAF50;
+  opacity: 0.7;
 }
 
 .planned-task:hover,
@@ -1330,12 +1652,15 @@ onMounted(async () => {
 }
 
 .task-time {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 6px;
-  margin-bottom: 8px;
+  font-size: 9px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-bottom: 4px;
   display: inline-block;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .planned-task .task-time {
@@ -1357,17 +1682,35 @@ onMounted(async () => {
 }
 
 .task-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: #F5E8D8;
-  margin-bottom: 6px;
-  line-height: 1.3;
+  margin-bottom: 2px;
+  line-height: 1.2;
+  letter-spacing: -0.2px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .task-duration {
-  font-size: 10px;
-  color: #AAA;
-  margin-bottom: 4px;
+  font-size: 9px;
+  font-weight: 400;
+  color: #999;
+  letter-spacing: 0.1px;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mismatch-indicator {
@@ -1400,17 +1743,34 @@ onMounted(async () => {
   }
 }
 
+.variance-badge {
+  font-size: 8px;
+  font-weight: 600;
+  color: #FF4500;
+  background: rgba(255, 69, 0, 0.15);
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.variance-badge.skipped {
+  color: #FF6F61;
+  background: rgba(255, 111, 97, 0.15);
+}
+
 .variance-text {
   position: absolute;
-  bottom: 4px;
-  right: 8px;
-  font-size: 10px;
+  bottom: 3px;
+  right: 6px;
+  font-size: 8px;
   font-weight: 600;
   color: #FF4500;
   background: rgba(255, 69, 0, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px 4px;
+  border-radius: 3px;
   border: 1px solid rgba(255, 69, 0, 0.3);
+  white-space: nowrap;
 }
 
 .variance-text.positive {
@@ -1423,13 +1783,13 @@ onMounted(async () => {
   flex: 1;
   background: rgba(245, 232, 216, 0.05);
   border: 2px dashed #555;
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: 8px;
+  padding: 8px 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #666;
-  font-size: 12px;
+  font-size: 10px;
   font-style: italic;
 }
 
@@ -1437,6 +1797,67 @@ onMounted(async () => {
   background: linear-gradient(90deg, transparent 0%, rgba(255, 69, 0, 0.1) 50%, transparent 100%);
   border-left-color: #FF4500;
   border-radius: 0 8px 8px 0;
+}
+
+.adaptive-block-slot {
+  position: absolute;
+  left: calc(50% + 6px); /* Right half of the timeline, accounting for gap */
+  right: 0;
+  padding: 8px 0;
+  box-sizing: border-box;
+}
+
+.adaptive-task {
+  background: rgba(218, 165, 32, 0.2);
+  border: 2px solid #DAA520;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  height: calc(100% - 16px);
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.adaptive-task:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(218, 165, 32, 0.3);
+  background: rgba(218, 165, 32, 0.3);
+}
+
+.adaptive-task::before {
+  content: 'ADAPTIVE';
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  background: #2A2A2A;
+  color: #DAA520;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #DAA520;
+  opacity: 0.7;
+}
+
+.adaptive-task .task-time {
+  background: rgba(218, 165, 32, 0.1);
+  color: #DAA520;
+  border: 1px solid rgba(218, 165, 32, 0.2);
+}
+
+.adaptive-task .task-title {
+  color: #DAA520;
+}
+
+.adaptive-task .task-duration {
+  color: #B8944A;
 }
 
 .floating-insights {

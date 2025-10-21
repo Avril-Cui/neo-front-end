@@ -1,0 +1,423 @@
+<template>
+  <div class="tasks-view">
+    <div class="header">
+      <div class="header-content">
+        <div class="header-left">
+          <div class="logo">NEO</div>
+          <div class="view-toggle">
+            <button
+              class="toggle-option"
+              :class="{ active: activeView === 'Today' }"
+              @click="navigateToToday"
+            >
+              Today
+            </button>
+            <button
+              class="toggle-option"
+              :class="{ active: activeView === 'Compare' }"
+              @click="navigateToCompare"
+            >
+              Compare
+            </button>
+            <button
+              class="toggle-option"
+              :class="{ active: activeView === 'Logging' }"
+              @click="navigateToLogging"
+            >
+              Logging
+            </button>
+            <button
+              class="toggle-option"
+              :class="{ active: activeView === 'Tasks' }"
+              @click="navigateToTasks"
+            >
+              Tasks
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <h1 class="page-title">Dropped Tasks</h1>
+      <p class="page-description">
+        These tasks couldn't be scheduled due to time constraints or conflicts.
+      </p>
+
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading dropped tasks...</p>
+      </div>
+
+      <div v-else-if="droppedTasks.length === 0" class="empty-state">
+        <div class="empty-icon">✓</div>
+        <h2>No Dropped Tasks</h2>
+        <p>All tasks have been successfully scheduled.</p>
+      </div>
+
+      <div v-else class="tasks-list">
+        <div
+          v-for="droppedTask in droppedTasksWithDetails"
+          :key="droppedTask.taskId"
+          class="task-card"
+        >
+          <div class="task-header">
+            <div class="task-name">{{ droppedTask.task?.taskName || droppedTask.taskId }}</div>
+            <div class="task-priority" :class="`priority-${droppedTask.task?.priority || 3}`">
+              Priority {{ droppedTask.task?.priority || '?' }}
+            </div>
+          </div>
+
+          <div v-if="droppedTask.task" class="task-details">
+            <div class="detail-row">
+              <span class="detail-label">Category:</span>
+              <span class="detail-value">{{ droppedTask.task.category }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Duration:</span>
+              <span class="detail-value">{{ droppedTask.task.duration }} minutes</span>
+            </div>
+            <div v-if="droppedTask.task.deadline" class="detail-row">
+              <span class="detail-label">Deadline:</span>
+              <span class="detail-value">{{ formatDate(droppedTask.task.deadline) }}</span>
+            </div>
+          </div>
+
+          <div class="task-reason">
+            <span class="reason-label">Reason:</span>
+            <span class="reason-text">{{ droppedTask.reason }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { AdaptiveScheduleAPI, TaskCatalogAPI, CURRENT_USER, type DroppedTask, type Task } from '../services/api'
+
+const router = useRouter()
+const activeView = ref('Tasks')
+
+const isLoading = ref(true)
+const droppedTasks = ref<DroppedTask[]>([])
+
+interface DroppedTaskWithDetails {
+  taskId: string
+  owner: string
+  reason: string
+  task?: Task
+}
+
+const droppedTasksWithDetails = ref<DroppedTaskWithDetails[]>([])
+
+// Navigation functions
+const navigateToToday = () => {
+  router.push('/')
+}
+
+const navigateToCompare = () => {
+  router.push('/compare')
+}
+
+const navigateToLogging = () => {
+  router.push('/logging')
+}
+
+const navigateToTasks = () => {
+  router.push('/tasks')
+}
+
+// Format date helper
+const formatDate = (dateStr: string) => {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// Fetch dropped tasks
+const fetchDroppedTasks = async () => {
+  try {
+    isLoading.value = true
+    const tasks = await AdaptiveScheduleAPI.getDroppedTasks(CURRENT_USER)
+    droppedTasks.value = tasks
+
+    // Fetch task details for each dropped task
+    const tasksWithDetails: DroppedTaskWithDetails[] = []
+    for (const droppedTask of tasks) {
+      try {
+        const task = await TaskCatalogAPI.getTask(CURRENT_USER, droppedTask.taskId)
+        tasksWithDetails.push({
+          ...droppedTask,
+          task
+        })
+      } catch (error) {
+        console.error(`Failed to fetch task ${droppedTask.taskId}:`, error)
+        tasksWithDetails.push({
+          ...droppedTask,
+          task: undefined
+        })
+      }
+    }
+    droppedTasksWithDetails.value = tasksWithDetails
+  } catch (error) {
+    console.error('Failed to fetch dropped tasks:', error)
+    droppedTasks.value = []
+    droppedTasksWithDetails.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchDroppedTasks()
+})
+</script>
+
+<style scoped>
+.tasks-view {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #1a1a1a;
+  min-height: 100vh;
+  color: #F5E8D8;
+  line-height: 1.5;
+  width: 100vw;
+}
+
+.header {
+  background: #2a2a2a;
+  color: #F5E8D8;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid #333;
+}
+
+.header-content {
+  width: 100%;
+  max-width: 1400px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 40px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #FF6F61;
+}
+
+.view-toggle {
+  display: flex;
+  background: rgba(245, 232, 216, 0.1);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid rgba(245, 232, 216, 0.2);
+}
+
+.toggle-option {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  background: transparent;
+  color: rgba(245, 232, 216, 0.8);
+}
+
+.toggle-option.active {
+  background: rgba(255, 111, 97, 0.2);
+  color: #FF6F61;
+  backdrop-filter: blur(10px);
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.page-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #F5E8D8;
+  margin-bottom: 8px;
+}
+
+.page-description {
+  font-size: 16px;
+  color: #AAA;
+  margin-bottom: 32px;
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #444;
+  border-top-color: #FF6F61;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  color: #4CAF50;
+}
+
+.empty-state h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #F5E8D8;
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  font-size: 16px;
+  color: #AAA;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.task-card {
+  background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
+  border-radius: 12px;
+  padding: 20px;
+  border: 2px solid #FF4444;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.task-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(255, 68, 68, 0.3);
+}
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.task-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #F5E8D8;
+}
+
+.task-priority {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.task-priority.priority-1 {
+  background: rgba(255, 69, 0, 0.2);
+  color: #FF4500;
+  border: 1px solid rgba(255, 69, 0, 0.3);
+}
+
+.task-priority.priority-2 {
+  background: rgba(255, 111, 97, 0.2);
+  color: #FF6F61;
+  border: 1px solid rgba(255, 111, 97, 0.3);
+}
+
+.task-priority.priority-3 {
+  background: rgba(218, 165, 32, 0.2);
+  color: #DAA520;
+  border: 1px solid rgba(218, 165, 32, 0.3);
+}
+
+.task-priority.priority-4,
+.task-priority.priority-5 {
+  background: rgba(170, 170, 170, 0.2);
+  color: #AAA;
+  border: 1px solid rgba(170, 170, 170, 0.3);
+}
+
+.task-details {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.detail-row {
+  display: flex;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.detail-label {
+  font-weight: 600;
+  color: #AAA;
+  min-width: 100px;
+}
+
+.detail-value {
+  color: #F5E8D8;
+}
+
+.task-reason {
+  padding: 12px;
+  background: rgba(255, 68, 68, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 68, 68, 0.2);
+}
+
+.reason-label {
+  font-weight: 600;
+  color: #FF4444;
+  margin-right: 8px;
+}
+
+.reason-text {
+  color: #F5E8D8;
+  font-size: 14px;
+}
+</style>

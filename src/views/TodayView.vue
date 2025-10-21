@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AddTaskModal from '../components/AddTaskModal.vue'
 import { ScheduleTimeAPI, TaskCatalogAPI, CURRENT_USER, type Task, type TimeBlock } from '../services/api'
+import { getCurrentDate } from '../utils/time'
 
 // Router
 const router = useRouter()
@@ -39,8 +40,8 @@ const stats = ref({
 const tasks = ref<DisplayTask[]>([])
 const isLoading = ref(true)
 
-// Date navigation
-const currentDate = ref(new Date())
+// Date navigation (using mock time for development)
+const currentDate = ref(getCurrentDate())
 const selectedDate = ref('Friday, September 27')
 const activeView = ref('Today')
 
@@ -60,7 +61,7 @@ const goToPreviousDay = () => {
 }
 
 const goToToday = () => {
-  currentDate.value = new Date()
+  currentDate.value = getCurrentDate()
   selectedDate.value = formatDisplayDate(currentDate.value)
   fetchScheduleData()
 }
@@ -75,7 +76,7 @@ const goToNextDay = () => {
 
 // Check if current date is today
 const isToday = () => {
-  const today = new Date()
+  const today = getCurrentDate()
   return currentDate.value.toDateString() === today.toDateString()
 }
 
@@ -90,6 +91,10 @@ const navigateToCompare = () => {
 
 const navigateToLogging = () => {
   router.push('/logging')
+}
+
+const navigateToTasks = () => {
+  router.push('/tasks')
 }
 
 // Helper to convert timestamp (number or string) to 12-hour format
@@ -214,8 +219,8 @@ const updateStats = () => {
   }
 }
 
-// Get current time
-const currentTime = ref(new Date())
+// Get current time (mock time: 9:00 AM for development)
+const currentTime = ref(getCurrentDate())
 const getCurrentTimePosition = () => {
   const hours = currentTime.value.getHours()
   const minutes = currentTime.value.getMinutes()
@@ -364,7 +369,7 @@ const onDrag = (event: MouseEvent) => {
   }
 
   // Update preview time display
-  const today = new Date()
+  const today = getCurrentDate()
   const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), newStartHour, newStartMinute)
   const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), newEndHour, newEndMinute)
 
@@ -393,7 +398,7 @@ const endDrag = async (event: MouseEvent) => {
     if (period === 'PM' && hours !== 12) hours += 12
     if (period === 'AM' && hours === 12) hours = 0
 
-    const today = new Date()
+    const today = getCurrentDate()
     return new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes).getTime()
   }
 
@@ -505,7 +510,7 @@ const handleTaskSubmit = async (taskData: any) => {
     console.log('Creating new task:', taskData)
 
     // Convert start and end time to Unix timestamps
-    const today = new Date()
+    const today = getCurrentDate()
     const [startHour, startMinute] = taskData.startTime.split(':')
     const [endHour, endMinute] = taskData.endTime.split(':')
 
@@ -544,7 +549,7 @@ const handleTaskSubmit = async (taskData: any) => {
       allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
     } catch (error: any) {
       // If no time blocks exist yet, that's fine - we'll create one
-      if (error.message?.includes('No future time blocks found')) {
+      if (error.message?.includes('No time blocks found') || error.message?.includes('No future time blocks found')) {
         console.log('📋 No existing time blocks found (this is normal for first task)')
         allSchedules = []
       } else {
@@ -728,6 +733,13 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
               @click="navigateToLogging"
             >
               Logging
+            </button>
+            <button
+              class="toggle-option"
+              :class="{ active: activeView === 'Tasks' }"
+              @click="navigateToTasks"
+            >
+              Tasks
             </button>
           </div>
         </div>
