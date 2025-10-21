@@ -67,6 +67,10 @@
         </div>
       </div>
 
+      <div class="optimize-button-container">
+        <button class="optimize-schedule-button">Optimize Schedule</button>
+      </div>
+
       <div class="legend">
         <div class="legend-item">
           <div class="legend-icon planned"></div>
@@ -82,82 +86,87 @@
         </div>
       </div>
 
-      <div class="unified-timeline">
-        <div class="time-axis">
-          <div
-            v-for="hour in timeMarkers"
-            :key="hour.time"
-            class="time-marker"
-            :style="{ top: hour.position + 'px' }"
-          >
-            {{ hour.label }}
-            <div class="time-dot"></div>
-          </div>
-        </div>
-
-        <div class="current-time-line" :style="{ top: currentTimePosition + 'px' }"></div>
-
-        <!-- Empty time slots (for adding tasks) -->
-        <div
-          v-for="slot in emptyTimeSlots"
-          :key="`empty-${slot.hour}-${slot.minute}`"
-          class="empty-time-slot"
-          :style="{ top: slot.position + 'px', height: slot.height + 'px' }"
-        >
-          <div
-            class="empty-slot-panel"
-            @click="openAddTaskForTimeSlot(slot.hour, slot.minute)"
-          >
-            <div class="add-task-content">
-              <span class="add-icon">+</span>
-              <span class="add-text">Add Task</span>
+      <div class="timeline-wrapper" ref="timelineContainerRef">
+        <div class="unified-timeline">
+          <div class="time-axis">
+            <div
+              v-for="marker in timeMarkers"
+              :key="`${marker.time}-${marker.label}`"
+              class="time-marker"
+              :style="{ top: marker.position + 'px' }"
+            >
+              {{ marker.label }}
+              <div class="time-dot"></div>
             </div>
           </div>
-        </div>
 
-        <!-- Comparison slots -->
-        <div
-          v-for="(comparison, index) in comparisons"
-          :key="index"
-          class="time-slot"
-          :class="{ 'major-mismatch': comparison.isMismatch }"
-          :style="{ top: getComparisonPosition(comparison.startTime || 0) + 'px' }"
-        >
-          <div class="task-comparison">
-            <!-- Perfect Match -->
-            <div v-if="comparison.isPerfectMatch" class="task-perfect-match">
-              <div class="task-time">{{ comparison.timeRange }}</div>
-              <div class="task-title">{{ comparison.taskName }}</div>
-              <div class="task-duration">{{ comparison.duration }} • {{ comparison.category }}</div>
-              <div class="variance-text positive">{{ comparison.varianceText }}</div>
+          <div class="current-time-line" :style="{ top: currentTimePosition + 'px' }"></div>
+
+          <!-- Empty time slots (for adding tasks) -->
+          <div
+            v-for="slot in emptyTimeSlots"
+            :key="`empty-${slot.hour}-${slot.minute}`"
+            class="empty-time-slot"
+            :style="{ top: slot.position + 'px', height: slot.height + 'px' }"
+          >
+            <div
+              class="empty-slot-panel"
+              @click="openAddTaskForTimeSlot(slot.hour, slot.minute)"
+            >
+              <div class="add-task-content">
+                <span class="add-icon">+</span>
+                <span class="add-text">Add Task</span>
+              </div>
             </div>
+          </div>
 
-            <!-- Mismatch -->
-            <template v-else>
-              <div v-if="comparison.planned" class="planned-task">
-                <div class="task-time">{{ comparison.planned.timeRange }}</div>
-                <div class="task-title">{{ comparison.planned.taskName }}</div>
-                <div class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</div>
-                <div v-if="comparison.planned.varianceText" class="variance-text">
-                  {{ comparison.planned.varianceText }}
+          <!-- Comparison slots -->
+          <div
+            v-for="(comparison, index) in comparisons"
+            :key="index"
+            class="time-slot"
+            :class="{ 'major-mismatch': comparison.isMismatch }"
+            :style="{
+              top: getComparisonPosition(comparison.startTime || 0) + 'px',
+              height: getComparisonHeight(comparison) + 'px'
+            }"
+          >
+            <div class="task-comparison">
+              <!-- Perfect Match -->
+              <div v-if="comparison.isPerfectMatch" class="task-perfect-match">
+                <div class="task-time">{{ comparison.timeRange }}</div>
+                <div class="task-title">{{ comparison.taskName }}</div>
+                <div class="task-duration">{{ comparison.duration }} • {{ comparison.category }}</div>
+                <div class="variance-text positive">{{ comparison.varianceText }}</div>
+              </div>
+
+              <!-- Mismatch -->
+              <template v-else>
+                <div v-if="comparison.planned" class="planned-task">
+                  <div class="task-time">{{ comparison.planned.timeRange }}</div>
+                  <div class="task-title">{{ comparison.planned.taskName }}</div>
+                  <div class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</div>
+                  <div v-if="comparison.planned.varianceText" class="variance-text">
+                    {{ comparison.planned.varianceText }}
+                  </div>
                 </div>
-              </div>
-              <div v-else class="no-task">{{ comparison.noPlannedText || 'No planned task' }}</div>
+                <div v-else class="no-task">{{ comparison.noPlannedText || 'No planned task' }}</div>
 
-              <div v-if="comparison.mismatchIcon" class="mismatch-indicator">
-                {{ comparison.mismatchIcon }}
-              </div>
-
-              <div v-if="comparison.actual" class="actual-task">
-                <div class="task-time">{{ comparison.actual.timeRange }}</div>
-                <div class="task-title">{{ comparison.actual.taskName }}</div>
-                <div class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</div>
-                <div v-if="comparison.actual.varianceText" class="variance-text">
-                  {{ comparison.actual.varianceText }}
+                <div v-if="comparison.mismatchIcon" class="mismatch-indicator">
+                  {{ comparison.mismatchIcon }}
                 </div>
-              </div>
-              <div v-else class="no-task">{{ comparison.noActualText || 'Task skipped' }}</div>
-            </template>
+
+                <div v-if="comparison.actual" class="actual-task">
+                  <div class="task-time">{{ comparison.actual.timeRange }}</div>
+                  <div class="task-title">{{ comparison.actual.taskName }}</div>
+                  <div class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</div>
+                  <div v-if="comparison.actual.varianceText" class="variance-text">
+                    {{ comparison.actual.varianceText }}
+                  </div>
+                </div>
+                <div v-else class="no-task">{{ comparison.noActualText || 'Task skipped' }}</div>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -275,16 +284,37 @@ const stats = ref({
   timeVariance: '0m'
 })
 
-// Time markers for timeline
+// Timeline constants - optimized for 1-hour task fitting with padding
+const HOUR_HEIGHT = 120  // 120px per hour (increased to accommodate padding)
+const START_HOUR = 0     // Start at midnight (full 24 hours)
+const END_HOUR = 24      // End at midnight next day
+
+// Time markers for timeline - every hour (24 total)
 const timeMarkers = computed(() => {
   const markers = []
-  const HOUR_HEIGHT = 120 // 120px per hour
-  for (let hour = 9; hour <= 15; hour++) {
-    const position = (hour - 9) * HOUR_HEIGHT
-    const isPM = hour >= 12
-    const displayHour = hour > 12 ? hour - 12 : hour
-    const label = `${displayHour}:00 ${isPM ? 'PM' : 'AM'}`
-    markers.push({ time: hour, position, label })
+
+  // Generate markers for every hour (24 total in 24 hours)
+  for (let hour = 0; hour < 24; hour++) {
+    const position = hour * HOUR_HEIGHT
+
+    const period = hour >= 12 ? 'PM' : 'AM'
+    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
+
+    let label = ''
+    if (hour === 0) {
+      label = 'Midnight'
+    } else if (hour === 12) {
+      label = 'Noon'
+    } else {
+      label = `${displayHour} ${period}`
+    }
+
+    markers.push({
+      time: hour,
+      position,
+      label,
+      isFullHour: true // All markers are full hours
+    })
   }
   return markers
 })
@@ -295,20 +325,94 @@ const updateCurrentTimePosition = () => {
   const now = new Date()
   const hours = now.getHours()
   const minutes = now.getMinutes()
-  const HOUR_HEIGHT = 120
-  const START_HOUR = 9
-  const totalMinutes = (hours - START_HOUR) * 60 + minutes
-  currentTimePosition.value = (totalMinutes / 60) * HOUR_HEIGHT
+  // Use full 24-hour timeline
+  currentTimePosition.value = hours * HOUR_HEIGHT + (minutes / 60) * HOUR_HEIGHT
 }
+
+// Timeline container ref for scrolling
+const timelineContainerRef = ref<HTMLElement | null>(null)
 
 // Calculate position for a comparison based on its start time
 const getComparisonPosition = (timestamp: number) => {
   const date = new Date(timestamp)
   const hours = date.getHours()
   const minutes = date.getMinutes()
-  const HOUR_HEIGHT = 120
-  const START_HOUR = 9
-  const totalMinutes = (hours - START_HOUR) * 60 + minutes
+  // Use full 24-hour timeline (no START_HOUR offset)
+  return hours * HOUR_HEIGHT + (minutes / 60) * HOUR_HEIGHT
+}
+
+// Calculate height for a comparison based on its duration
+const getComparisonHeight = (comparison: Comparison) => {
+  if (comparison.isPerfectMatch || comparison.planned) {
+    // Parse duration string like "1 hour", "30 minutes", "1h 30m"
+    const durationStr = comparison.duration || comparison.planned?.duration || '1 hour'
+    const baseHeight = parseDurationToPixels(durationStr)
+    // Add padding for visual spacing between task clusters
+    return baseHeight + 16 // 8px top + 8px bottom padding
+  }
+  // Default to 1 hour + padding if no duration available
+  return HOUR_HEIGHT + 16
+}
+
+// Helper function to parse duration strings to minutes
+const parseDurationToMinutes = (durationStr: string): number => {
+  let totalMinutes = 0
+
+  // Extract hours
+  const hourMatch = durationStr.match(/(\d+)\s*h(?:our)?s?/i)
+  if (hourMatch) {
+    totalMinutes += parseInt(hourMatch[1]) * 60
+  }
+
+  // Extract minutes
+  const minuteMatch = durationStr.match(/(\d+)\s*m(?:inute)?s?/i)
+  if (minuteMatch) {
+    totalMinutes += parseInt(minuteMatch[1])
+  }
+
+  // If no hours or minutes found, try to parse just numbers (assume minutes)
+  if (totalMinutes === 0) {
+    const numberMatch = durationStr.match(/(\d+)/)
+    if (numberMatch) {
+      totalMinutes = parseInt(numberMatch[1])
+    } else {
+      // Default to 60 minutes (1 hour)
+      totalMinutes = 60
+    }
+  }
+
+  return totalMinutes
+}
+
+// Helper function to parse duration strings to pixel height
+const parseDurationToPixels = (durationStr: string): number => {
+  // Handle formats like "1 hour", "30 minutes", "1h 30m", "1 hour 30 minutes"
+  let totalMinutes = 0
+
+  // Extract hours
+  const hourMatch = durationStr.match(/(\d+)\s*h(?:our)?s?/i)
+  if (hourMatch) {
+    totalMinutes += parseInt(hourMatch[1]) * 60
+  }
+
+  // Extract minutes
+  const minuteMatch = durationStr.match(/(\d+)\s*m(?:inute)?s?/i)
+  if (minuteMatch) {
+    totalMinutes += parseInt(minuteMatch[1])
+  }
+
+  // If no hours or minutes found, try to parse just numbers (assume minutes)
+  if (totalMinutes === 0) {
+    const numberMatch = durationStr.match(/(\d+)/)
+    if (numberMatch) {
+      totalMinutes = parseInt(numberMatch[1])
+    } else {
+      // Default to 60 minutes (1 hour)
+      totalMinutes = 60
+    }
+  }
+
+  // Convert minutes to pixels (HOUR_HEIGHT pixels per 60 minutes)
   return (totalMinutes / 60) * HOUR_HEIGHT
 }
 
@@ -360,48 +464,46 @@ interface EmptyTimeSlot {
 
 const emptyTimeSlots = computed(() => {
   const slots: EmptyTimeSlot[] = []
-  const HOUR_HEIGHT = 120 // 120px per hour
-  const START_HOUR = 9
-  const END_HOUR = 15
-  const SLOT_DURATION = 30 // 30 minutes per slot
+  const SLOT_DURATION = 60 // 60 minutes per slot (1 hour)
 
   // Create occupied time ranges from comparisons
   const occupiedRanges = comparisons.value.map(c => {
     if (!c.startTime) return null
     const date = new Date(c.startTime)
+    const durationStr = c.duration || c.planned?.duration || '1 hour'
+    const durationMinutes = parseDurationToMinutes(durationStr)
+
     return {
       startHour: date.getHours(),
       startMinute: date.getMinutes(),
-      // Estimate end time (assume 30 min slots for now)
-      endHour: date.getHours(),
-      endMinute: date.getMinutes() + SLOT_DURATION
+      endHour: Math.floor((date.getHours() * 60 + date.getMinutes() + durationMinutes) / 60),
+      endMinute: (date.getMinutes() + durationMinutes) % 60
     }
   }).filter(r => r !== null)
 
-  // Generate slots for each 30-minute block
+  // Generate slots for each hour across full 24 hours
   for (let hour = START_HOUR; hour < END_HOUR; hour++) {
-    for (let minute = 0; minute < 60; minute += SLOT_DURATION) {
-      // Check if this slot is occupied
-      const isOccupied = occupiedRanges.some(range => {
-        if (!range) return false
-        const slotStart = hour * 60 + minute
-        const rangeStart = range.startHour * 60 + range.startMinute
-        const rangeEnd = range.endHour * 60 + range.endMinute
-        return slotStart >= rangeStart && slotStart < rangeEnd
+    // Check if this hour slot is occupied
+    const isOccupied = occupiedRanges.some(range => {
+      if (!range) return false
+      const slotStart = hour * 60
+      const slotEnd = (hour + 1) * 60
+      const rangeStart = range.startHour * 60 + range.startMinute
+      const rangeEnd = range.endHour * 60 + range.endMinute
+      // Check if there's any overlap
+      return !(slotEnd <= rangeStart || slotStart >= rangeEnd)
+    })
+
+    if (!isOccupied) {
+      const position = hour * HOUR_HEIGHT
+      const height = HOUR_HEIGHT
+
+      slots.push({
+        hour,
+        minute: 0,
+        position,
+        height
       })
-
-      if (!isOccupied) {
-        const totalMinutes = (hour - START_HOUR) * 60 + minute
-        const position = (totalMinutes / 60) * HOUR_HEIGHT
-        const height = (SLOT_DURATION / 60) * HOUR_HEIGHT
-
-        slots.push({
-          hour,
-          minute,
-          position,
-          height
-        })
-      }
     }
   }
 
@@ -715,6 +817,13 @@ onMounted(async () => {
   // Fetch comparisons
   await fetchComparisons()
 
+  // Auto-scroll to current time (center it in viewport) like Today view
+  if (timelineContainerRef.value) {
+    const currentPos = currentTimePosition.value
+    // Center the current time in the viewport (adjust for more compact timeline)
+    timelineContainerRef.value.scrollTop = currentPos - 150
+  }
+
   onUnmounted(() => {
     clearInterval(interval)
   })
@@ -878,6 +987,38 @@ onMounted(async () => {
   color: #FF6F61;
 }
 
+.optimize-button-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.optimize-schedule-button {
+  background: rgba(255, 198, 54, 0.5);
+  border: 2px solid #FFC636;
+  border-radius: 10px;
+  padding: 16px 48px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #FFC636;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  letter-spacing: 0.5px;
+}
+
+.optimize-schedule-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 198, 54, 0.65);
+  border-color: #FFC636;
+}
+
+.optimize-schedule-button:active {
+  transform: translateY(0px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 .legend {
   display: flex;
   justify-content: center;
@@ -919,38 +1060,65 @@ onMounted(async () => {
   background: linear-gradient(45deg, rgba(245, 232, 216, 0.3) 50%, rgba(255, 111, 97, 0.3) 50%);
 }
 
+.timeline-wrapper {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 350px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-bottom: 32px;
+}
+
+.timeline-wrapper::-webkit-scrollbar {
+  width: 8px;
+}
+
+.timeline-wrapper::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.timeline-wrapper::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 4px;
+}
+
+.timeline-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #4a4a4a;
+}
+
 .unified-timeline {
   position: relative;
-  padding-left: 80px;
-  margin-bottom: 32px;
+  padding-left: 100px;
+  width: 100%;
+  min-height: 2880px; /* 24 hours * 120px per hour = 2880px */
+  height: 2880px;
 }
 
 .time-axis {
   position: absolute;
   left: 0;
   top: 0;
-  bottom: 0;
-  width: 70px;
+  height: 2880px;
+  width: 90px;
   border-right: 2px solid #444;
 }
 
 .time-marker {
   position: absolute;
   left: 0;
-  width: 65px;
+  width: 85px;
   text-align: right;
-  font-size: 13px;
-  color: #F5E8D8;
-  font-weight: 600;
   transform: translateY(-8px);
   padding-right: 12px;
-  opacity: 0.9;
+  font-size: 12px;
+  color: #F5E8D8;
+  font-weight: 700;
 }
 
 .time-dot {
   position: absolute;
-  right: -5px;
-  top: -2px;
+  right: -6px;
+  top: -1px;
   width: 8px;
   height: 8px;
   background: #DAA520;
@@ -960,8 +1128,8 @@ onMounted(async () => {
 
 .current-time-line {
   position: absolute;
-  left: 68px;
-  width: calc(100% - 68px);
+  left: 88px;
+  width: calc(100% - 88px);
   height: 3px;
   background: linear-gradient(90deg, #FF4500 0%, #FF6F61 100%);
   border-radius: 2px;
@@ -982,17 +1150,20 @@ onMounted(async () => {
 
 .time-slot {
   position: absolute;
-  left: 80px;
+  left: 100px;
   right: 0;
-  min-height: 80px;
-  border-left: 3px solid transparent;
+  /* Remove min-height - let slots size based on task duration */
+  /* Remove border-left - no orange line for compare view */
+  padding: 8px 0; /* Add vertical padding for spacing between task clusters */
+  box-sizing: border-box;
 }
 
 .task-comparison {
   position: relative;
   display: flex;
   gap: 12px;
-  margin-bottom: 8px;
+  height: calc(100% - 16px); /* Account for time-slot padding (8px top + 8px bottom) */
+  margin: 0; /* Remove any existing margin */
 }
 
 .planned-task,
@@ -1006,7 +1177,9 @@ onMounted(async () => {
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
-  min-height: 80px;
+  height: 100%; /* Fill the full height of task-comparison */
+  box-sizing: border-box; /* Include padding in height calculation */
+  margin: 2px 0; /* Add subtle vertical margin for visual separation */
 }
 
 .planned-task {
@@ -1056,6 +1229,9 @@ onMounted(async () => {
   border-radius: 12px;
   padding: 16px;
   position: relative;
+  height: 100%; /* Fill the full height of task-comparison */
+  box-sizing: border-box; /* Include padding in height calculation */
+  margin: 2px 0; /* Add subtle vertical margin for visual separation */
 }
 
 .task-perfect-match::before {
@@ -1082,15 +1258,17 @@ onMounted(async () => {
 
 .empty-time-slot {
   position: absolute;
-  left: 80px;
+  left: 100px;
   width: calc(50% - 46px); /* Match planned task width: 50% minus half the gap (12px/2 = 6px) */
   transition: all 0.2s ease;
+  padding: 8px 0; /* Match time-slot padding */
+  box-sizing: border-box;
 }
 
 .empty-slot-panel {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 16px); /* Account for padding like task-comparison */
   background: transparent;
   border: 2px dashed rgba(245, 232, 216, 0.15);
   border-radius: 12px;
@@ -1100,6 +1278,7 @@ onMounted(async () => {
   cursor: pointer;
   transition: all 0.3s ease;
   opacity: 0;
+  margin: 2px 0; /* Match task component margins */
 }
 
 .empty-time-slot:hover .empty-slot-panel {
