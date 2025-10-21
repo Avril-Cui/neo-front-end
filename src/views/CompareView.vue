@@ -97,12 +97,27 @@
 
         <div class="current-time-line" :style="{ top: currentTimePosition + 'px' }"></div>
 
+        <!-- Empty time slots (for adding tasks) -->
+        <div
+          v-for="slot in emptyTimeSlots"
+          :key="`empty-${slot.hour}-${slot.minute}`"
+          class="empty-time-slot"
+          :style="{ top: slot.position + 'px', height: slot.height + 'px' }"
+          @click="openAddTaskForTimeSlot(slot.hour, slot.minute)"
+        >
+          <div class="add-task-overlay">
+            <span class="add-task-text">Add Task</span>
+            <button class="add-task-btn">+</button>
+          </div>
+        </div>
+
         <!-- Comparison slots -->
         <div
           v-for="(comparison, index) in comparisons"
           :key="index"
           class="time-slot"
           :class="{ 'major-mismatch': comparison.isMismatch }"
+          :style="{ top: getComparisonPosition(comparison.startTime || 0) + 'px' }"
         >
           <div class="task-comparison">
             <!-- Perfect Match -->
@@ -144,26 +159,55 @@
       </div>
     </div>
 
-    <div class="floating-insights" :class="{ collapsed: insightsCollapsed }">
-      <div class="insights-badge">{{ insights.length }}</div>
-      <div class="insights-header" @click="toggleInsights">
-        <div class="insights-title">Smart Insights</div>
-        <div class="toggle-icon">▼</div>
-      </div>
-      <div class="insights-content">
-        <div v-for="(insight, index) in insights" :key="index" class="insight-item">
-          <div class="insight-icon" :class="insight.type">{{ insight.icon }}</div>
-          <div class="insight-text">{{ insight.text }}</div>
-        </div>
-      </div>
-    </div>
+    <!-- Add Task Modal -->
+    <AddTaskModal
+      :show="showAddTaskModal"
+      :selected-hour="selectedHourForNewTask"
+      :selected-minute="selectedMinuteForNewTask"
+      @close="closeAddTaskModal"
+      @submit="handleTaskSubmit"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import AddTaskModal from '../components/AddTaskModal.vue'
 import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, CURRENT_USER, type Task, type Session, type TimeBlock } from '../services/api'
+
+// Helper to round timestamp to nearest 30 minutes
+const roundToNearest30Min = (timestamp: number): number => {
+  const date = new Date(timestamp)
+  const minutes = date.getMinutes()
+  const roundedMinutes = Math.round(minutes / 30) * 30
+  date.setMinutes(roundedMinutes, 0, 0)
+  return date.getTime()
+}
+
+// Helper to format time from timestamp
+const formatTime = (timestamp: number): string => {
+  const date = new Date(timestamp)
+  const hours = date.getHours()
+  const minutes = date.getMinutes()
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
+// Helper to format duration in minutes
+const formatDuration = (milliseconds: number): string => {
+  const totalMinutes = Math.floor(milliseconds / (1000 * 60))
+  if (totalMinutes < 60) {
+    return `${totalMinutes} minutes`
+  }
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (minutes === 0) {
+    return `${hours} hour${hours > 1 ? 's' : ''}`
+  }
+  return `${hours}h ${minutes}m`
+}
 
 const router = useRouter()
 
@@ -253,6 +297,17 @@ const updateCurrentTimePosition = () => {
   currentTimePosition.value = (totalMinutes / 60) * HOUR_HEIGHT
 }
 
+// Calculate position for a comparison based on its start time
+const getComparisonPosition = (timestamp: number) => {
+  const date = new Date(timestamp)
+  const hours = date.getHours()
+  const minutes = date.getMinutes()
+  const HOUR_HEIGHT = 120
+  const START_HOUR = 9
+  const totalMinutes = (hours - START_HOUR) * 60 + minutes
+  return (totalMinutes / 60) * HOUR_HEIGHT
+}
+
 // Comparisons data
 interface Comparison {
   isPerfectMatch?: boolean
@@ -262,6 +317,7 @@ interface Comparison {
   duration?: string
   category?: string
   varianceText?: string
+  startTime?: number  // For sorting
   planned?: {
     timeRange: string
     taskName: string
@@ -281,115 +337,353 @@ interface Comparison {
   noActualText?: string
 }
 
-const comparisons = ref<Comparison[]>([
-  {
-    isPerfectMatch: true,
-    timeRange: '9:00 - 10:30 AM',
-    taskName: 'Morning Workout',
-    duration: '90 minutes',
-    category: 'Health & Fitness',
-    varianceText: 'Perfect timing ✓'
-  },
-  {
-    isMismatch: true,
-    planned: {
-      timeRange: '11:00 - 12:30 PM',
-      taskName: 'Client Presentation Prep',
-      duration: '90 minutes',
-      category: 'Work'
-    },
-    actual: {
-      timeRange: '11:20 - 1:10 PM',
-      taskName: 'Client Presentation Prep',
-      duration: '110 minutes',
-      category: 'Work',
-      varianceText: '+20m start, +20m duration'
-    },
-    mismatchIcon: '⚠️'
-  },
-  {
-    isMismatch: true,
-    planned: {
-      timeRange: '1:00 - 2:00 PM',
-      taskName: 'Lunch Break',
-      duration: '60 minutes',
-      category: 'Personal'
-    },
-    actual: {
-      timeRange: '1:10 - 2:40 PM',
-      taskName: 'Lunch Break',
-      duration: '90 minutes',
-      category: 'Personal',
-      varianceText: '+30m duration'
-    },
-    mismatchIcon: '⏰'
-  },
-  {
-    isPerfectMatch: true,
-    timeRange: '2:40 - 4:10 PM',
-    taskName: 'Data Analysis',
-    duration: '90 minutes',
-    category: 'Work',
-    varianceText: 'On schedule ✓'
-  },
-  {
-    isMismatch: true,
-    actual: {
-      timeRange: '4:15 - 4:45 PM',
-      taskName: 'Unexpected Call',
-      duration: '30 minutes',
-      category: 'Work',
-      varianceText: 'Unplanned'
-    },
-    mismatchIcon: '+',
-    noPlannedText: 'No planned task'
-  },
-  {
-    isMismatch: true,
-    planned: {
-      timeRange: '5:00 - 5:30 PM',
-      taskName: 'Quick Review',
-      duration: '30 minutes',
-      category: 'Work',
-      varianceText: 'Skipped'
-    },
-    mismatchIcon: '✕',
-    noActualText: 'Task skipped'
-  }
-])
+const comparisons = ref<Comparison[]>([])
+const isLoadingComparisons = ref(false)
 
-// Insights
-const insightsCollapsed = ref(false)
-const insights = ref([
-  {
-    type: 'warning',
-    icon: '⚠️',
-    text: 'Presentation prep consistently takes 20% longer than estimated. Consider extending default time blocks.'
-  },
-  {
-    type: 'warning',
-    icon: '⏰',
-    text: 'Lunch breaks tend to extend beyond planned duration. Factor in 30 extra minutes.'
-  },
-  {
-    type: 'success',
-    icon: '✓',
-    text: 'Workout schedule perfectly maintained - great consistency!'
-  },
-  {
-    type: 'info',
-    icon: '💡',
-    text: 'Leave 15-minute buffers between work tasks for unexpected interruptions.'
-  }
-])
+// Add Task Modal state
+const showAddTaskModal = ref(false)
+const selectedHourForNewTask = ref(9)
+const selectedMinuteForNewTask = ref(0)
 
-const toggleInsights = () => {
-  insightsCollapsed.value = !insightsCollapsed.value
+// Empty time slots for adding tasks
+interface EmptyTimeSlot {
+  hour: number
+  minute: number
+  position: number
+  height: number
 }
 
-// Auto-collapse insights after 10 seconds
-let insightsTimeout: number | null = null
-onMounted(() => {
+const emptyTimeSlots = computed(() => {
+  const slots: EmptyTimeSlot[] = []
+  const HOUR_HEIGHT = 120 // 120px per hour
+  const START_HOUR = 9
+  const END_HOUR = 15
+  const SLOT_DURATION = 30 // 30 minutes per slot
+
+  // Create occupied time ranges from comparisons
+  const occupiedRanges = comparisons.value.map(c => {
+    if (!c.startTime) return null
+    const date = new Date(c.startTime)
+    return {
+      startHour: date.getHours(),
+      startMinute: date.getMinutes(),
+      // Estimate end time (assume 30 min slots for now)
+      endHour: date.getHours(),
+      endMinute: date.getMinutes() + SLOT_DURATION
+    }
+  }).filter(r => r !== null)
+
+  // Generate slots for each 30-minute block
+  for (let hour = START_HOUR; hour < END_HOUR; hour++) {
+    for (let minute = 0; minute < 60; minute += SLOT_DURATION) {
+      // Check if this slot is occupied
+      const isOccupied = occupiedRanges.some(range => {
+        if (!range) return false
+        const slotStart = hour * 60 + minute
+        const rangeStart = range.startHour * 60 + range.startMinute
+        const rangeEnd = range.endHour * 60 + range.endMinute
+        return slotStart >= rangeStart && slotStart < rangeEnd
+      })
+
+      if (!isOccupied) {
+        const totalMinutes = (hour - START_HOUR) * 60 + minute
+        const position = (totalMinutes / 60) * HOUR_HEIGHT
+        const height = (SLOT_DURATION / 60) * HOUR_HEIGHT
+
+        slots.push({
+          hour,
+          minute,
+          position,
+          height
+        })
+      }
+    }
+  }
+
+  return slots
+})
+
+const openAddTaskForTimeSlot = (hour: number, minute: number) => {
+  selectedHourForNewTask.value = hour
+  selectedMinuteForNewTask.value = minute
+  showAddTaskModal.value = true
+}
+
+const closeAddTaskModal = () => {
+  showAddTaskModal.value = false
+}
+
+// Handle task submission
+const handleTaskSubmit = async (taskData: any) => {
+  try {
+    console.log('Creating new task:', taskData)
+
+    // Convert start and end time to Unix timestamps
+    const today = new Date()
+    const [startHour, startMinute] = taskData.startTime.split(':')
+    const [endHour, endMinute] = taskData.endTime.split(':')
+
+    const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(startHour), parseInt(startMinute))
+    const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(endHour), parseInt(endMinute))
+
+    const startTimestamp = startDate.getTime()
+    const endTimestamp = endDate.getTime()
+
+    // Create the task first
+    const newTask = await TaskCatalogAPI.createTask({
+      owner: CURRENT_USER,
+      taskName: taskData.taskName,
+      category: taskData.category,
+      duration: taskData.duration, // already in minutes
+      priority: taskData.priority,
+      splittable: taskData.splittable,
+      ...(taskData.deadline && { deadline: taskData.deadline }),
+      ...(taskData.slack && taskData.slack > 0 && { slack: taskData.slack }),
+      ...(taskData.notes && { note: taskData.notes })
+    })
+
+    if (!newTask.taskId) {
+      console.error('ERROR: Task created but taskId is missing!', newTask)
+      throw new Error('Task was created but taskId is missing')
+    }
+
+    // Check if a time block already exists for this time range
+    let allSchedules = []
+    try {
+      allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    } catch (error: any) {
+      if (error.message?.includes('No future time blocks found')) {
+        allSchedules = []
+      } else {
+        throw error
+      }
+    }
+
+    // Find a time block with matching start and end times
+    const existingBlock = allSchedules.find(block =>
+      block.start === startTimestamp && block.end === endTimestamp
+    )
+
+    let timeBlockId: string
+
+    if (existingBlock) {
+      timeBlockId = existingBlock.timeBlockId
+      if (!existingBlock.taskIdSet.includes(newTask.taskId)) {
+        const result = await ScheduleTimeAPI.assignTimeBlock({
+          owner: CURRENT_USER,
+          taskId: newTask.taskId,
+          start: startTimestamp,
+          end: endTimestamp
+        })
+      }
+    } else {
+      const timeBlockResult = await ScheduleTimeAPI.assignTimeBlock({
+        owner: CURRENT_USER,
+        taskId: newTask.taskId,
+        start: startTimestamp,
+        end: endTimestamp
+      })
+      timeBlockId = timeBlockResult.timeBlockId
+    }
+
+    // Update the task to reference this time block
+    await TaskCatalogAPI.assignSchedule(
+      CURRENT_USER,
+      newTask.taskId,
+      timeBlockId
+    )
+
+    // Wait a bit before refreshing to ensure backend is updated
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // Refresh the comparisons to show the new task
+    await fetchComparisons()
+
+    showAddTaskModal.value = false
+  } catch (error: any) {
+    console.error('Failed to create task:', error)
+    const errorMessage = error.message || 'Unknown error occurred'
+    alert(`Failed to create task: ${errorMessage}`)
+  }
+}
+
+// Fetch and process comparisons
+const fetchComparisons = async () => {
+  try {
+    isLoadingComparisons.value = true
+
+    // 1. Get all planned schedules
+    let plannedSchedules: TimeBlock[] = []
+    try {
+      plannedSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    } catch (error: any) {
+      if (error.message?.includes('No future time blocks found')) {
+        plannedSchedules = []
+      } else {
+        throw error
+      }
+    }
+
+    // 2. Get all user sessions
+    let userSessions: Session[] = []
+    try {
+      userSessions = await RoutineLogAPI.getUserSessions(CURRENT_USER)
+    } catch (error: any) {
+      if (!Array.isArray(userSessions)) {
+        userSessions = []
+      }
+    }
+
+    // Create a map to track which sessions have been matched
+    const matchedSessions = new Set<string>()
+    const processedComparisons: Comparison[] = []
+
+    // 3. Iterate through all planned schedules
+    for (const timeBlock of plannedSchedules) {
+      for (const taskId of timeBlock.taskIdSet) {
+        // Get task details
+        let task: Task | null = null
+        try {
+          task = await TaskCatalogAPI.getTask(CURRENT_USER, taskId)
+        } catch (error) {
+          console.error(`Failed to fetch task ${taskId}:`, error)
+          continue
+        }
+
+        const plannedStart = roundToNearest30Min(timeBlock.start)
+        const plannedEnd = roundToNearest30Min(timeBlock.end)
+
+        // Find matching session
+        const matchingSession = userSessions.find(session => {
+          if (!session.start || !session.end || session.linkedTaskId !== taskId) return false
+          const sessionStart = roundToNearest30Min(new Date(session.start).getTime())
+          const sessionEnd = roundToNearest30Min(new Date(session.end).getTime())
+          return sessionStart === plannedStart && sessionEnd === plannedEnd
+        })
+
+        if (matchingSession) {
+          // Perfect match case
+          matchedSessions.add(matchingSession.sessionId)
+          processedComparisons.push({
+            isPerfectMatch: true,
+            startTime: timeBlock.start,
+            timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
+            taskName: task.taskName,
+            duration: formatDuration(timeBlock.end - timeBlock.start),
+            category: task.category,
+            varianceText: 'Perfect timing ✓'
+          })
+        } else {
+          // Check if there's a session for this task at a different time
+          const sessionForTask = userSessions.find(s => s.linkedTaskId === taskId && s.start && s.end)
+
+          if (sessionForTask && !matchedSessions.has(sessionForTask.sessionId)) {
+            // Task was done but at different time
+            matchedSessions.add(sessionForTask.sessionId)
+            const sessionStart = new Date(sessionForTask.start!).getTime()
+            const sessionEnd = new Date(sessionForTask.end!).getTime()
+            const plannedDuration = timeBlock.end - timeBlock.start
+            const actualDuration = sessionEnd - sessionStart
+            const timeDiff = actualDuration - plannedDuration
+
+            let varianceText = ''
+            if (Math.abs(timeDiff) < 60000) {
+              varianceText = 'Same duration'
+            } else if (timeDiff > 0) {
+              varianceText = `+${formatDuration(timeDiff)} overtime`
+            } else {
+              varianceText = `-${formatDuration(Math.abs(timeDiff))} under`
+            }
+
+            processedComparisons.push({
+              isMismatch: true,
+              startTime: Math.min(timeBlock.start, sessionStart),
+              planned: {
+                timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
+                taskName: task.taskName,
+                duration: formatDuration(plannedDuration),
+                category: task.category
+              },
+              actual: {
+                timeRange: `${formatTime(sessionStart)} - ${formatTime(sessionEnd)}`,
+                taskName: task.taskName,
+                duration: formatDuration(actualDuration),
+                category: task.category,
+                varianceText
+              },
+              mismatchIcon: '⚠️'
+            })
+          } else {
+            // Planned but not logged
+            processedComparisons.push({
+              isMismatch: true,
+              startTime: timeBlock.start,
+              planned: {
+                timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
+                taskName: task.taskName,
+                duration: formatDuration(timeBlock.end - timeBlock.start),
+                category: task.category,
+                varianceText: 'Skipped'
+              },
+              mismatchIcon: '✕',
+              noActualText: 'No logged session, click to start logging'
+            })
+          }
+        }
+      }
+    }
+
+    // Add unplanned sessions (sessions without matching planned tasks)
+    for (const session of userSessions) {
+      if (!matchedSessions.has(session.sessionId) && session.start && session.end) {
+        const sessionStart = new Date(session.start).getTime()
+        const sessionEnd = new Date(session.end).getTime()
+
+        let category = ''
+        if (session.linkedTaskId) {
+          try {
+            const task = await TaskCatalogAPI.getTask(CURRENT_USER, session.linkedTaskId)
+            category = task.category
+          } catch (error) {
+            console.error(`Failed to fetch task for session ${session.sessionId}`)
+          }
+        }
+
+        processedComparisons.push({
+          isMismatch: true,
+          startTime: sessionStart,
+          actual: {
+            timeRange: `${formatTime(sessionStart)} - ${formatTime(sessionEnd)}`,
+            taskName: session.sessionName,
+            duration: formatDuration(sessionEnd - sessionStart),
+            category: category || 'Ad-hoc',
+            varianceText: 'Unplanned'
+          },
+          mismatchIcon: '+',
+          noPlannedText: 'No planned task'
+        })
+      }
+    }
+
+    // Sort comparisons by start time
+    processedComparisons.sort((a, b) => (a.startTime || 0) - (b.startTime || 0))
+
+    comparisons.value = processedComparisons
+
+    // Update stats
+    stats.value.totalTasks = processedComparisons.length
+    stats.value.perfectMatch = processedComparisons.filter(c => c.isPerfectMatch).length
+    stats.value.mismatched = processedComparisons.filter(c => c.isMismatch).length
+
+  } catch (error) {
+    console.error('Failed to fetch comparisons:', error)
+    comparisons.value = []
+  } finally {
+    isLoadingComparisons.value = false
+  }
+}
+
+onMounted(async () => {
   // Initialize selected date
   selectedDate.value = formatDisplayDate(currentDate.value)
 
@@ -397,22 +691,11 @@ onMounted(() => {
   // Update current time every minute
   const interval = setInterval(updateCurrentTimePosition, 60000)
 
-  // Auto-collapse insights
-  insightsTimeout = window.setTimeout(() => {
-    insightsCollapsed.value = true
-  }, 10000)
-
-  // Calculate stats from comparisons
-  stats.value.totalTasks = comparisons.value.length
-  stats.value.perfectMatch = comparisons.value.filter(c => c.isPerfectMatch).length
-  stats.value.mismatched = comparisons.value.filter(c => c.isMismatch).length
-  stats.value.timeVariance = '+45m' // Placeholder - would calculate from actual data
+  // Fetch comparisons
+  await fetchComparisons()
 
   onUnmounted(() => {
     clearInterval(interval)
-    if (insightsTimeout) {
-      clearTimeout(insightsTimeout)
-    }
   })
 })
 </script>
@@ -677,9 +960,10 @@ onMounted(() => {
 }
 
 .time-slot {
-  position: relative;
+  position: absolute;
+  left: 80px;
+  right: 0;
   min-height: 80px;
-  margin-bottom: 16px;
   border-left: 3px solid transparent;
 }
 
@@ -773,6 +1057,56 @@ onMounted(() => {
 .actual-task:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.add-task-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(42, 42, 42, 0.95);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.planned-task:hover .add-task-overlay {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.add-task-text {
+  color: #F5E8D8;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.add-task-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 111, 97, 0.2);
+  border: 2px solid #FF6F61;
+  color: #FF6F61;
+  font-size: 24px;
+  font-weight: 300;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-task-btn:hover {
+  background: rgba(255, 111, 97, 0.3);
+  transform: scale(1.1);
 }
 
 .task-time {
