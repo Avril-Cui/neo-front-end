@@ -37,16 +37,23 @@ watch(() => props.selectedHour, (hour) => {
   }
 }, { immediate: true })
 
-const categories = [
+const defaultCategories = [
   { value: 'Work', icon: '💼', label: 'Work' },
   { value: 'Personal', icon: '👤', label: 'Personal' },
   { value: 'Health & Fitness', icon: '🏃', label: 'Health & Fitness' },
-  { value: 'Education', icon: '📚', label: 'Education' },
-  { value: 'Creative', icon: '🎨', label: 'Creative' }
+  { value: 'Education', icon: '📚', label: 'Education' }
 ]
 
+const showCustomCategoryInput = ref(false)
+const customCategoryInput = ref('')
+
 const selectedCategoryData = computed(() => {
-  return categories.find(c => c.value === selectedCategory.value) || categories[0]
+  const defaultCat = defaultCategories.find(c => c.value === selectedCategory.value)
+  if (defaultCat) {
+    return defaultCat
+  }
+  // For custom categories, use a generic icon
+  return { value: selectedCategory.value, icon: '📌', label: selectedCategory.value }
 })
 
 const closeModal = () => {
@@ -61,8 +68,27 @@ const adjustDuration = (change: number) => {
 }
 
 const selectCategory = (category: string) => {
-  selectedCategory.value = category
-  showCategoryDropdown.value = false
+  if (category === 'custom') {
+    showCustomCategoryInput.value = true
+    customCategoryInput.value = ''
+  } else {
+    selectedCategory.value = category
+    showCategoryDropdown.value = false
+    showCustomCategoryInput.value = false
+  }
+}
+
+const confirmCustomCategory = () => {
+  if (customCategoryInput.value.trim()) {
+    selectedCategory.value = customCategoryInput.value.trim()
+    showCustomCategoryInput.value = false
+    showCategoryDropdown.value = false
+  }
+}
+
+const cancelCustomCategory = () => {
+  showCustomCategoryInput.value = false
+  customCategoryInput.value = ''
 }
 
 const selectPriority = (priority: number) => {
@@ -134,12 +160,36 @@ const handleSubmit = () => {
                     </div>
                     <div v-if="showCategoryDropdown" class="select-options">
                       <div
-                        v-for="cat in categories"
+                        v-for="cat in defaultCategories"
                         :key="cat.value"
                         class="select-option"
                         @click="selectCategory(cat.value)"
                       >
                         <span>{{ cat.icon }}</span> {{ cat.label }}
+                      </div>
+                      <div class="select-option custom-option" @click="selectCategory('custom')">
+                        <span>➕</span> Custom Category
+                      </div>
+                    </div>
+                    <!-- Custom category input popup -->
+                    <div v-if="showCustomCategoryInput" class="custom-category-popup">
+                      <div class="custom-category-header">Enter Custom Category</div>
+                      <input
+                        type="text"
+                        class="custom-category-input"
+                        v-model="customCategoryInput"
+                        placeholder="e.g., Hobby, Finance..."
+                        @keyup.enter="confirmCustomCategory"
+                        @keyup.esc="cancelCustomCategory"
+                        autofocus
+                      />
+                      <div class="custom-category-actions">
+                        <button type="button" class="custom-btn cancel" @click="cancelCustomCategory">
+                          Cancel
+                        </button>
+                        <button type="button" class="custom-btn confirm" @click="confirmCustomCategory">
+                          Confirm
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -505,6 +555,95 @@ const handleSubmit = () => {
 
 .select-option:hover {
   background: rgba(121, 158, 255, 0.1);
+}
+
+.select-option.custom-option {
+  color: #799EFF;
+  font-weight: 600;
+  border-top: 1px solid rgba(68, 68, 68, 0.5);
+}
+
+.custom-category-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: rgba(42, 42, 42, 0.98);
+  border: 2px solid #799EFF;
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  z-index: 20;
+  margin-top: 4px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.custom-category-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: #799EFF;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.custom-category-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: 2px solid rgba(245, 232, 216, 0.2);
+  border-radius: 8px;
+  color: #F5E8D8;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  outline: none;
+  margin-bottom: 12px;
+}
+
+.custom-category-input:focus {
+  border-color: #799EFF;
+  box-shadow: 0 0 0 3px rgba(121, 158, 255, 0.1);
+}
+
+.custom-category-input::placeholder {
+  color: #666;
+}
+
+.custom-category-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.custom-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.custom-btn.cancel {
+  background: transparent;
+  color: #AAA;
+  border: 1px solid rgba(245, 232, 216, 0.2);
+}
+
+.custom-btn.cancel:hover {
+  background: rgba(245, 232, 216, 0.05);
+  color: #F5E8D8;
+}
+
+.custom-btn.confirm {
+  background: #799EFF;
+  color: #1C1C1C;
+}
+
+.custom-btn.confirm:hover {
+  background: #6B8FFF;
+  transform: translateY(-1px);
 }
 
 .duration-field {

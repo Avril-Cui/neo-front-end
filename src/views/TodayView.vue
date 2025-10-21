@@ -319,7 +319,7 @@ const startDrag = (event: MouseEvent, task: DisplayTask) => {
   // Store original position
   dragStartPosition.value = {
     top: getTaskPosition(task.timeStart),
-    height: getTaskHeight(task.duration)
+    height: getTaskHeight(task.timeStart, task.timeEnd)
   }
 
   // Initialize preview at current position
@@ -457,17 +457,45 @@ const deleteTask = async (task: DisplayTask) => {
   try {
     console.log('🗑️ Deleting task:', task.taskId, 'from time block:', task.timeBlockId)
 
-    // Remove the task from the time block
-    await ScheduleTimeAPI.removeTask(CURRENT_USER, task.taskId, task.timeBlockId)
+    // 1. Remove the task from the time block (may fail if already removed)
+    try {
+      await ScheduleTimeAPI.removeTask(CURRENT_USER, task.taskId, task.timeBlockId)
+      console.log('🗑️ Task removed from time block successfully')
+    } catch (error: any) {
+      // If task not found in time block, it may have already been removed
+      if (error.message?.includes('not found in time block')) {
+        console.log('🗑️ Task already removed from time block, continuing...')
+      } else {
+        throw error
+      }
+    }
 
-    console.log('🗑️ Task removed from time block successfully')
+    // 2. Delete the schedule from the task's timeBlockSet (may also fail if already removed)
+    try {
+      await TaskCatalogAPI.deleteSchedule(CURRENT_USER, task.taskId, task.timeBlockId)
+      console.log('🗑️ Schedule deleted from task successfully')
+    } catch (error: any) {
+      // If schedule not found, it may have already been removed
+      if (error.message?.includes('not found') || error.message?.includes('does not exist')) {
+        console.log('🗑️ Schedule already removed from task, continuing...')
+      } else {
+        throw error
+      }
+    }
 
-    // Refresh the schedule
+    // 3. Always refresh the schedule to sync UI with backend state
     await fetchScheduleData()
-    console.log('🗑️ Schedule refreshed')
+    console.log('🗑️ Schedule refreshed successfully')
   } catch (error: any) {
     console.error('🗑️ Failed to delete task:', error)
     alert(`Failed to delete task: ${error.message || 'Unknown error'}`)
+
+    // Try to refresh anyway to sync UI state
+    try {
+      await fetchScheduleData()
+    } catch (refreshError) {
+      console.error('🗑️ Failed to refresh after error:', refreshError)
+    }
   }
 }
 
