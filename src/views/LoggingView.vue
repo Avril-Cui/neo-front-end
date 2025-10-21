@@ -48,8 +48,7 @@ const navigateToToday = () => {
 }
 
 const navigateToCompare = () => {
-  // TODO: implement compare view
-  console.log('Compare view not implemented yet')
+  router.push('/compare')
 }
 
 const navigateToLogging = () => {
@@ -712,7 +711,7 @@ onUnmounted(() => {
     'Segoe UI',
     system-ui,
     sans-serif;
-  background: linear-gradient(135deg, #1c1c1c 0%, #2a2a2a 100%);
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
   min-height: 100vh;
   color: #f5e8d8;
   line-height: 1.5;

@@ -85,8 +85,7 @@ const navigateToToday = () => {
 }
 
 const navigateToCompare = () => {
-  // TODO: implement compare view
-  console.log('Compare view not implemented yet')
+  router.push('/compare')
 }
 
 const navigateToLogging = () => {
