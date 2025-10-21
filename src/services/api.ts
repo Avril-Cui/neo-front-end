@@ -120,6 +120,11 @@ export const TaskCatalogAPI = {
     return response.taskTable.map(mapTaskResponse)
   },
 
+  async getTask(owner: string, taskId: string): Promise<Task> {
+    const response = await apiCall<{ task: TaskResponse }>('/api/TaskCatalog/_getTask', { owner, taskId })
+    return mapTaskResponse(response.task)
+  },
+
   async createTask(params: {
     owner: string
     taskName: string
@@ -185,8 +190,8 @@ export interface Session {
 // RoutineLog APIs
 export const RoutineLogAPI = {
   async getUserSessions(owner: string): Promise<Session[]> {
-    const response = await apiCall<Session[]>('/api/RoutineLog/_getUserSessions', { owner })
-    return response
+    const response = await apiCall<{ sessionTable: Session[] }>('/api/RoutineLog/_getUserSessions', { owner })
+    return response.sessionTable
   },
 
   async createSession(params: {
@@ -220,6 +225,11 @@ export const ScheduleTimeAPI = {
     const response = await apiCall<Array<{ timeBlock: TimeBlockResponse }>>('/api/ScheduleTime/_getUserSchedule', { owner })
     // Extract timeBlock from each wrapped object and map _id to timeBlockId
     return response.map(item => mapTimeBlockResponse(item.timeBlock))
+  },
+
+  async getTaskSchedule(owner: string, timeBlockId: string): Promise<TimeBlock> {
+    const response = await apiCall<{ timeBlock: TimeBlockResponse }>('/api/ScheduleTime/_getTaskSchedule', { owner, timeBlockId })
+    return mapTimeBlockResponse(response.timeBlock)
   },
 
   async assignTimeBlock(params: {

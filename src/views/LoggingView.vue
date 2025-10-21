@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { TaskCatalogAPI, RoutineLogAPI, CURRENT_USER, type Task } from '../services/api'
+import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, CURRENT_USER, type Task, type Session } from '../services/api'
 
 // Router
 const router = useRouter()
@@ -145,6 +145,9 @@ const stopTimer = async () => {
 
     // Reset the timer
     elapsedTime.value = 0
+
+    // Refresh session logs
+    await fetchUserSessions()
   } catch (error: any) {
     console.error('Failed to end session:', error)
     alert(`Failed to end session: ${error.message || 'Unknown error'}`)
@@ -189,6 +192,9 @@ const confirmInterrupt = async () => {
 
     // Reset the timer
     elapsedTime.value = 0
+
+    // Refresh session logs
+    await fetchUserSessions()
   } catch (error: any) {
     console.error('Failed to interrupt session:', error)
     alert(`Failed to interrupt session: ${error.message || 'Unknown error'}`)
@@ -352,56 +358,163 @@ const existingTasks = [
   },
 ]
 
-// Mock session logs
-const sessionLogs = [
-  {
-    id: 1,
-    name: 'Data Analysis & Review',
-    category: 'Work',
-    type: 'Planned',
-    time: 'Started 2:47 PM',
-    duration: '15:32',
-    progress: 26,
-    remaining: '44m',
-    status: 'On track',
-    active: true,
-  },
-  {
-    id: 2,
-    name: 'Client Presentation Prep',
-    category: 'Work',
-    type: 'Planned',
-    time: '11:20 AM - 1:10 PM',
-    duration: '1h 50m',
-    progress: 100,
-    planned: '1h 30m',
-    deviation: '+20m overtime',
-    deviationType: 'negative',
-    active: false,
-  },
-  {
-    id: 3,
-    name: 'Morning Workout',
-    category: 'Health',
-    type: 'Planned',
-    time: '9:00 AM - 10:30 AM',
-    duration: '1h 30m',
-    progress: 100,
-    planned: '1h 30m',
-    deviation: '✓ Perfect timing',
-    deviationType: 'positive',
-    active: false,
-  },
-  {
-    id: 4,
-    name: 'Quick Email Check',
-    category: 'Work',
-    type: 'Ad-hoc',
-    time: '4:15 PM - 4:45 PM',
-    duration: '30m',
-    active: false,
-  },
-]
+// Session logs from API
+interface SessionLog {
+  id: string
+  name: string
+  category?: string
+  type: string
+  time: string
+  duration?: string
+  progress?: number
+  remaining?: string
+  planned?: string
+  status?: string
+  deviation?: string
+  deviationType?: string
+  active: boolean
+}
+
+const sessionLogs = ref<SessionLog[]>([])
+const isLoadingSessions = ref(false)
+
+// Helper to format time from timestamp
+const formatTimeFromTimestamp = (timestamp: string | number): string => {
+  const date = new Date(timestamp)
+  const hours = date.getHours()
+  const minutes = date.getMinutes()
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${period}`
+}
+
+// Helper to format duration in hours and minutes
+const formatDuration = (milliseconds: number): string => {
+  const totalMinutes = Math.floor(milliseconds / (1000 * 60))
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`
+  }
+  return `${minutes}m`
+}
+
+// Calculate duration between two timestamps
+const calculateDuration = (start: string | number, end: string | number): number => {
+  const startTime = new Date(start).getTime()
+  const endTime = new Date(end).getTime()
+  return endTime - startTime
+}
+
+// Fetch and process user sessions
+const fetchUserSessions = async () => {
+  try {
+    isLoadingSessions.value = true
+    const sessions = await RoutineLogAPI.getUserSessions(CURRENT_USER)
+
+    // Check if sessions is an array (successful response)
+    if (!Array.isArray(sessions)) {
+      console.log('No sessions found or invalid response')
+      sessionLogs.value = []
+      return
+    }
+
+    // Process each session to build the session log data
+    const logs: SessionLog[] = []
+
+    for (const session of sessions) {
+      const log: SessionLog = {
+        id: session.sessionId,
+        name: session.sessionName,
+        type: session.linkedTaskId ? 'Planned' : 'Ad-hoc',
+        active: session.isActive,
+        time: '',
+        duration: undefined,
+        category: undefined,
+        progress: undefined,
+        planned: undefined,
+        remaining: undefined,
+        status: undefined,
+        deviation: undefined,
+        deviationType: undefined
+      }
+
+      // Fetch linked task if exists
+      if (session.linkedTaskId) {
+        try {
+          const task = await TaskCatalogAPI.getTask(CURRENT_USER, session.linkedTaskId)
+          log.category = task.category
+
+          // Calculate planned duration from time blocks
+          let totalPlannedDuration = 0
+          for (const timeBlockId of task.timeBlockSet) {
+            try {
+              const timeBlock = await ScheduleTimeAPI.getTaskSchedule(CURRENT_USER, timeBlockId)
+              totalPlannedDuration += calculateDuration(timeBlock.start, timeBlock.end)
+            } catch (error) {
+              console.error(`Failed to fetch time block ${timeBlockId}:`, error)
+            }
+          }
+
+          if (totalPlannedDuration > 0) {
+            log.planned = formatDuration(totalPlannedDuration)
+
+            // Calculate progress and remaining if session has ended
+            if (session.start && session.end) {
+              const sessionDuration = calculateDuration(session.start, session.end)
+              const progressPercent = Math.round((sessionDuration / totalPlannedDuration) * 100)
+              log.progress = progressPercent
+
+              const remainingDuration = totalPlannedDuration - sessionDuration
+              log.remaining = remainingDuration > 0 ? formatDuration(remainingDuration) : '0m'
+
+              // Calculate deviation
+              const deviationMs = sessionDuration - totalPlannedDuration
+              if (Math.abs(deviationMs) < 60000) { // Within 1 minute
+                log.deviation = '✓ Perfect timing'
+                log.deviationType = 'positive'
+              } else if (deviationMs > 0) {
+                log.deviation = `+${formatDuration(deviationMs)} overtime`
+                log.deviationType = 'negative'
+              } else {
+                log.deviation = `-${formatDuration(Math.abs(deviationMs))} under`
+                log.deviationType = 'positive'
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to fetch task ${session.linkedTaskId}:`, error)
+        }
+      }
+
+      // Format time display
+      if (session.isActive && session.start) {
+        log.time = `Started ${formatTimeFromTimestamp(session.start)}`
+        log.duration = 'ACTIVE'
+      } else if (session.start && session.end) {
+        log.time = `${formatTimeFromTimestamp(session.start)} - ${formatTimeFromTimestamp(session.end)}`
+        const sessionDuration = calculateDuration(session.start, session.end)
+        log.duration = formatDuration(sessionDuration)
+      } else if (session.start) {
+        log.time = `Started ${formatTimeFromTimestamp(session.start)}`
+      }
+
+      logs.push(log)
+    }
+
+    sessionLogs.value = logs
+  } catch (error: any) {
+    console.error('Failed to fetch user sessions:', error)
+    if (!error.message?.includes('No sessions found')) {
+      // Don't alert for no sessions, just show empty list
+      console.warn('No sessions found for user')
+    }
+    sessionLogs.value = []
+  } finally {
+    isLoadingSessions.value = false
+  }
+}
 
 const pauseReasons = [
   { emoji: '☕', text: 'Break - Coffee/Water' },
@@ -414,9 +527,10 @@ const pauseReasons = [
   { emoji: '❓', text: 'Other Reason' },
 ]
 
-// Fetch tasks on mount
+// Fetch tasks and sessions on mount
 onMounted(() => {
   fetchUserTasks()
+  fetchUserSessions()
 })
 
 // Cleanup
@@ -639,27 +753,30 @@ onUnmounted(() => {
               <div class="session-info">
                 <div class="session-name">{{ log.name }}</div>
                 <div class="session-meta">
-                  <span class="session-category">{{ log.category }}</span>
+                  <span v-if="log.category" class="session-category">{{ log.category }}</span>
                   <span class="session-type">{{ log.type }}</span>
                   <span>{{ log.time }}</span>
                 </div>
               </div>
-              <div class="session-duration">{{ log.duration }}</div>
+              <div v-if="log.active" class="session-active-tag">ACTIVE</div>
+              <div v-else class="session-duration">{{ log.duration }}</div>
             </div>
-            <div v-if="log.active || log.progress === 100" class="session-progress">
-              <div class="progress-item">
+            <div v-if="log.type === 'Planned' && (log.progress || log.planned)" class="session-progress">
+              <div v-if="log.progress" class="progress-item">
                 <div class="progress-value">{{ log.progress }}%</div>
-                <div class="progress-label">
-                  {{ log.progress === 100 ? 'Complete' : 'Progress' }}
-                </div>
+                <div class="progress-label">Progress</div>
               </div>
-              <div class="progress-item">
-                <div class="progress-value">{{ log.remaining || log.planned }}</div>
-                <div class="progress-label">{{ log.remaining ? 'Remaining' : 'Planned' }}</div>
+              <div v-if="log.planned" class="progress-item">
+                <div class="progress-value">{{ log.planned }}</div>
+                <div class="progress-label">Planned</div>
               </div>
-              <div class="progress-item">
+              <div v-if="log.remaining" class="progress-item">
+                <div class="progress-value">{{ log.remaining }}</div>
+                <div class="progress-label">Remaining</div>
+              </div>
+              <div v-if="log.deviation" class="progress-item">
                 <div class="deviation-indicator" :class="log.deviationType || 'neutral'">
-                  {{ log.deviation || log.status }}
+                  {{ log.deviation }}
                 </div>
               </div>
             </div>
@@ -1465,6 +1582,17 @@ onUnmounted(() => {
   font-weight: 700;
   color: #f5e8d8;
   font-family: 'SF Mono', Monaco, monospace;
+}
+
+.session-active-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: #FF6F61;
+  background: rgba(255, 111, 97, 0.2);
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 111, 97, 0.4);
+  letter-spacing: 0.5px;
 }
 
 .session-progress {

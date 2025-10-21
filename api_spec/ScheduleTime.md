@@ -129,6 +129,46 @@ Now, analyze the following Concept Implementation and generate the API documenta
 
 ---
 
+### POST /api/ScheduleTime/\_getTaskSchedule
+
+**Description:** Retrieves a specific time block for a given owner and time block ID.
+
+**Requirements:**
+- exists at least one time block under this owner with matching timeBlockId
+
+**Effects:**
+- return this time block
+
+**Request Body:**
+```json
+{
+  "owner": "string",
+  "timeBlockId": "string"
+}
+```
+
+**Success Response Body (Query):**
+```json
+{
+  "timeBlock": {
+    "_id": "string",
+    "owner": "string",
+    "start": "number",
+    "end": "number",
+    "taskIdSet": ["string"]
+  }
+}
+```
+
+**Error Response Body:**
+```json
+{
+  "error": "string"
+}
+```
+
+---
+
 ### POST /api/ScheduleTime/addTimeBlock
 
 **Description:** Creates a new time block for a user with specified start and end times.

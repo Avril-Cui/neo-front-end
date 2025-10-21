@@ -511,7 +511,18 @@ const handleTaskSubmit = async (taskData: any) => {
 
     // Check if a time block already exists for this time range
     console.log('🔍 Checking for existing time blocks at this time...')
-    const allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    let allSchedules = []
+    try {
+      allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    } catch (error: any) {
+      // If no time blocks exist yet, that's fine - we'll create one
+      if (error.message?.includes('No future time blocks found')) {
+        console.log('📋 No existing time blocks found (this is normal for first task)')
+        allSchedules = []
+      } else {
+        throw error
+      }
+    }
     console.log('📋 Found', allSchedules.length, 'existing time blocks')
 
     // Find a time block with matching start and end times
