@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import TodayView from '../views/TodayView.vue'
+import LoggingView from '../views/LoggingView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -8,6 +9,11 @@ const router = createRouter({
       path: '/',
       name: 'today',
       component: TodayView,
+    },
+    {
+      path: '/logging',
+      name: 'logging',
+      component: LoggingView,
     },
     {
       path: '/about',

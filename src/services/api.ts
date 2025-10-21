@@ -157,6 +157,63 @@ export const TaskCatalogAPI = {
   },
 }
 
+// RoutineLog interfaces
+interface SessionResponse {
+  owner: string
+  sessionName: string
+  sessionId: string
+  isPaused: boolean
+  isActive: boolean
+  start?: string
+  end?: string
+  linkedTaskId?: string
+  interruptReason?: string
+}
+
+export interface Session {
+  owner: string
+  sessionName: string
+  sessionId: string
+  isPaused: boolean
+  isActive: boolean
+  start?: string
+  end?: string
+  linkedTaskId?: string
+  interruptReason?: string
+}
+
+// RoutineLog APIs
+export const RoutineLogAPI = {
+  async getUserSessions(owner: string): Promise<Session[]> {
+    const response = await apiCall<Session[]>('/api/RoutineLog/_getUserSessions', { owner })
+    return response
+  },
+
+  async createSession(params: {
+    owner: string
+    sessionName: string
+    linkedTaskId?: string
+  }): Promise<{ session: string }> {
+    return apiCall<{ session: string }>('/api/RoutineLog/createSession', params)
+  },
+
+  async startSession(owner: string, session: string): Promise<void> {
+    return apiCall<void>('/api/RoutineLog/startSession', { owner, session })
+  },
+
+  async endSession(owner: string, session: string): Promise<void> {
+    return apiCall<void>('/api/RoutineLog/endSession', { owner, session })
+  },
+
+  async interruptSession(owner: string, session: string, interruptReason: string): Promise<void> {
+    return apiCall<void>('/api/RoutineLog/interruptSession', {
+      owner,
+      session,
+      interruptReason,
+    })
+  },
+}
+
 // ScheduleTime APIs
 export const ScheduleTimeAPI = {
   async getUserSchedule(owner: string): Promise<TimeBlock[]> {

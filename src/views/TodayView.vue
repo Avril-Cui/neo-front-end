@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import AddTaskModal from '../components/AddTaskModal.vue'
 import { ScheduleTimeAPI, TaskCatalogAPI, CURRENT_USER, type Task, type TimeBlock } from '../services/api'
+
+// Router
+const router = useRouter()
 
 // Modal state
 const showAddTaskModal = ref(false)
@@ -73,6 +77,20 @@ const goToNextDay = () => {
 const isToday = () => {
   const today = new Date()
   return currentDate.value.toDateString() === today.toDateString()
+}
+
+// Navigation functions
+const navigateToToday = () => {
+  router.push('/')
+}
+
+const navigateToCompare = () => {
+  // TODO: implement compare view
+  console.log('Compare view not implemented yet')
+}
+
+const navigateToLogging = () => {
+  router.push('/logging')
 }
 
 // Helper to convert timestamp (number or string) to 12-hour format
@@ -655,20 +673,23 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
             <button
               class="toggle-option"
               :class="{ active: activeView === 'Today' }"
+              @click="navigateToToday"
             >
               Today
             </button>
             <button
               class="toggle-option"
               :class="{ active: activeView === 'Compare' }"
+              @click="navigateToCompare"
             >
               Compare
             </button>
             <button
               class="toggle-option"
-              :class="{ active: activeView === 'Analytics' }"
+              :class="{ active: activeView === 'Logging' }"
+              @click="navigateToLogging"
             >
-              Analytics
+              Logging
             </button>
           </div>
         </div>
