@@ -683,20 +683,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="field-group">
-        <div class="duration-field">
-          <input type="number" class="duration-value" v-model="durationValue" min="1" max="8" />
-          <span class="duration-unit">hr</span>
-          <div class="duration-controls">
-            <button class="duration-btn" @click="adjustDuration(1)">+</button>
-            <button class="duration-btn" @click="adjustDuration(-1)">−</button>
-          </div>
-        </div>
-        <div class="split-toggle" :class="{ active: isSplitActive }" @click="toggleSplit">
-          <div class="split-checkbox">✓</div>
-          <span class="split-label">Split up</span>
-        </div>
-      </div>
 
       <div class="timer-section">
         <div class="current-session-name">

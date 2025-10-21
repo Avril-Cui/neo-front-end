@@ -322,6 +322,7 @@ interface Comparison {
   category?: string
   varianceText?: string
   startTime?: number  // For sorting
+  timeDeviationMs?: number  // Time deviation in milliseconds
   planned?: {
     timeRange: string
     taskName: string
@@ -575,7 +576,8 @@ const fetchComparisons = async () => {
             taskName: task.taskName,
             duration: formatDuration(timeBlock.end - timeBlock.start),
             category: task.category,
-            varianceText: 'Perfect timing ✓'
+            varianceText: 'Perfect timing ✓',
+            timeDeviationMs: 0
           })
         } else {
           // Check if there's a session for this task at a different time
@@ -602,6 +604,7 @@ const fetchComparisons = async () => {
             processedComparisons.push({
               isMismatch: true,
               startTime: Math.min(timeBlock.start, sessionStart),
+              timeDeviationMs: Math.abs(timeDiff),
               planned: {
                 timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
                 taskName: task.taskName,
@@ -618,14 +621,16 @@ const fetchComparisons = async () => {
               mismatchIcon: '⚠️'
             })
           } else {
-            // Planned but not logged
+            // Planned but not logged - count the entire planned duration as deviation
+            const plannedDuration = timeBlock.end - timeBlock.start
             processedComparisons.push({
               isMismatch: true,
               startTime: timeBlock.start,
+              timeDeviationMs: plannedDuration,
               planned: {
                 timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
                 taskName: task.taskName,
-                duration: formatDuration(timeBlock.end - timeBlock.start),
+                duration: formatDuration(plannedDuration),
                 category: task.category,
                 varianceText: 'Skipped'
               },
@@ -642,6 +647,7 @@ const fetchComparisons = async () => {
       if (!matchedSessions.has(session.sessionId) && session.start && session.end) {
         const sessionStart = new Date(session.start).getTime()
         const sessionEnd = new Date(session.end).getTime()
+        const actualDuration = sessionEnd - sessionStart
 
         let category = ''
         if (session.linkedTaskId) {
@@ -656,10 +662,11 @@ const fetchComparisons = async () => {
         processedComparisons.push({
           isMismatch: true,
           startTime: sessionStart,
+          timeDeviationMs: actualDuration, // Entire unplanned session duration counts as deviation
           actual: {
             timeRange: `${formatTime(sessionStart)} - ${formatTime(sessionEnd)}`,
             taskName: session.sessionName,
-            duration: formatDuration(sessionEnd - sessionStart),
+            duration: formatDuration(actualDuration),
             category: category || 'Ad-hoc',
             varianceText: 'Unplanned'
           },
@@ -678,6 +685,16 @@ const fetchComparisons = async () => {
     stats.value.totalTasks = processedComparisons.length
     stats.value.perfectMatch = processedComparisons.filter(c => c.isPerfectMatch).length
     stats.value.mismatched = processedComparisons.filter(c => c.isMismatch).length
+
+    // Calculate total time variance as sum of absolute deviations
+    let totalVarianceMs = 0
+    for (const comparison of processedComparisons) {
+      if (comparison.timeDeviationMs !== undefined) {
+        totalVarianceMs += comparison.timeDeviationMs
+      }
+    }
+
+    stats.value.timeVariance = formatDuration(totalVarianceMs)
 
   } catch (error) {
     console.error('Failed to fetch comparisons:', error)
