@@ -103,11 +103,15 @@
           :key="`empty-${slot.hour}-${slot.minute}`"
           class="empty-time-slot"
           :style="{ top: slot.position + 'px', height: slot.height + 'px' }"
-          @click="openAddTaskForTimeSlot(slot.hour, slot.minute)"
         >
-          <div class="add-task-overlay">
-            <span class="add-task-text">Add Task</span>
-            <button class="add-task-btn">+</button>
+          <div
+            class="empty-slot-panel"
+            @click="openAddTaskForTimeSlot(slot.hour, slot.minute)"
+          >
+            <div class="add-task-content">
+              <span class="add-icon">+</span>
+              <span class="add-text">Add Task</span>
+            </div>
           </div>
         </div>
 
@@ -1059,54 +1063,74 @@ onMounted(async () => {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
-.add-task-overlay {
+.empty-time-slot {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(42, 42, 42, 0.95);
+  left: 80px;
+  width: calc(50% - 46px); /* Match planned task width: 50% minus half the gap (12px/2 = 6px) */
+  transition: all 0.2s ease;
+}
+
+.empty-slot-panel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: 2px dashed rgba(245, 232, 216, 0.15);
   border-radius: 12px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  opacity: 0;
+}
+
+.empty-time-slot:hover .empty-slot-panel {
+  opacity: 1;
+  background: linear-gradient(135deg, rgba(42, 42, 42, 0.8) 0%, rgba(51, 51, 51, 0.8) 100%);
+  border-color: rgba(245, 232, 216, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.add-task-content {
+  display: flex;
+  align-items: center;
   gap: 8px;
   opacity: 0;
-  transition: opacity 0.2s ease;
-  pointer-events: none;
+  transition: opacity 0.3s ease;
 }
 
-.planned-task:hover .add-task-overlay {
+.empty-time-slot:hover .add-task-content {
   opacity: 1;
-  pointer-events: all;
 }
 
-.add-task-text {
-  color: #F5E8D8;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.add-task-btn {
-  width: 40px;
-  height: 40px;
+.add-icon {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: rgba(255, 111, 97, 0.2);
-  border: 2px solid #FF6F61;
-  color: #FF6F61;
-  font-size: 24px;
+  background: rgba(245, 232, 216, 0.1);
+  border: 1.5px solid rgba(245, 232, 216, 0.4);
+  color: #F5E8D8;
+  font-size: 18px;
   font-weight: 300;
-  cursor: pointer;
-  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
 }
 
-.add-task-btn:hover {
-  background: rgba(255, 111, 97, 0.3);
+.empty-slot-panel:hover .add-icon {
+  background: rgba(245, 232, 216, 0.15);
+  border-color: #F5E8D8;
   transform: scale(1.1);
+}
+
+.add-text {
+  color: #F5E8D8;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .task-time {
