@@ -35,8 +35,45 @@ const stats = ref({
 const tasks = ref<DisplayTask[]>([])
 const isLoading = ref(true)
 
+// Date navigation
+const currentDate = ref(new Date())
 const selectedDate = ref('Friday, September 27')
 const activeView = ref('Today')
+
+// Format date for display
+const formatDisplayDate = (date: Date) => {
+  const options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric' }
+  return date.toLocaleDateString('en-US', options)
+}
+
+// Navigation functions
+const goToPreviousDay = () => {
+  const newDate = new Date(currentDate.value)
+  newDate.setDate(newDate.getDate() - 1)
+  currentDate.value = newDate
+  selectedDate.value = formatDisplayDate(newDate)
+  fetchScheduleData()
+}
+
+const goToToday = () => {
+  currentDate.value = new Date()
+  selectedDate.value = formatDisplayDate(currentDate.value)
+  fetchScheduleData()
+}
+
+const goToNextDay = () => {
+  const newDate = new Date(currentDate.value)
+  newDate.setDate(newDate.getDate() + 1)
+  currentDate.value = newDate
+  selectedDate.value = formatDisplayDate(newDate)
+  fetchScheduleData()
+}
+
+// Check if current date is today
+const isToday = () => {
+  const today = new Date()
+  return currentDate.value.toDateString() === today.toDateString()
+}
 
 // Helper to convert timestamp (number or string) to 12-hour format
 const formatTime = (timestamp: number | string) => {
@@ -59,71 +96,86 @@ const fetchScheduleData = async () => {
   try {
     isLoading.value = true
 
-    // Get user's schedule
-    const schedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    console.log('📅 Fetching schedule for user:', CURRENT_USER)
 
-    if (!schedules || schedules.length === 0) {
-      tasks.value = []
-      updateStats()
-      return
-    }
-
-    // Get all user's tasks at once
+    // Get all user's tasks first
     let allTasks = []
     try {
       allTasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+      console.log('📝 Received tasks:', allTasks.length, 'total tasks')
+      console.log('📝 Task data:', JSON.stringify(allTasks, null, 2))
     } catch (error: any) {
       // If no tasks exist yet, that's okay
       if (!error.message?.includes('No tasks found')) {
         throw error
       }
+      console.log('⚠️ No tasks found in catalog')
       allTasks = []
     }
 
-    const taskMap = new Map(allTasks.map(task => [task.taskId, task]))
+    if (allTasks.length === 0) {
+      console.log('⚠️ No tasks found, clearing timeline')
+      tasks.value = []
+      updateStats()
+      return
+    }
 
-    // For each time block, create display tasks
+    // Get user's schedule to get time block details
+    const schedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    console.log('📋 Received schedules:', schedules.length, 'time blocks')
+    console.log('📋 Schedule data:', JSON.stringify(schedules, null, 2))
+
+    // Create a map of time blocks by ID for quick lookup
+    const timeBlockMap = new Map(schedules.map(block => [block.timeBlockId, block]))
+    console.log('🗺️ Time block map created with', timeBlockMap.size, 'blocks')
+
+    // Build display tasks from tasks (not time blocks) since tasks have the correct timeBlockSet
     const displayTasks: DisplayTask[] = []
 
-    for (const timeBlock of schedules) {
-      console.log('Processing time block:', timeBlock.timeBlockId, 'with tasks:', timeBlock.taskIdSet)
-      for (const taskId of timeBlock.taskIdSet) {
-        console.log('Looking for task:', taskId)
-        const task = taskMap.get(taskId)
-        console.log('Found task:', task)
-        if (task) {
+    for (const task of allTasks) {
+      console.log('📝 Processing task:', task.taskName, 'with timeBlockSet:', task.timeBlockSet)
+
+      if (!task.timeBlockSet || task.timeBlockSet.length === 0) {
+        console.log('⚠️ Task has no time blocks assigned, skipping')
+        continue
+      }
+
+      // A task can be in multiple time blocks
+      for (const timeBlockId of task.timeBlockSet) {
+        console.log('🔍 Looking for time block:', timeBlockId)
+        const timeBlock = timeBlockMap.get(timeBlockId)
+        console.log('🔍 Found time block:', timeBlock ? 'YES' : 'NO')
+
+        if (timeBlock) {
           const displayTask = {
-            id: task.taskId,
+            id: `${task.taskId}-${timeBlockId}`,  // Unique ID for each task-timeblock combination
             taskId: task.taskId,
-            timeBlockId: timeBlock.timeBlockId,  // Store the timeBlockId
+            timeBlockId: timeBlock.timeBlockId,
             timeStart: formatTime(timeBlock.start),
             timeEnd: formatTime(timeBlock.end),
             duration: task.duration,
             title: task.taskName,
             category: task.category,
             priority: getPriorityLabel(task.priority),
-            progress: 0, // We don't track progress yet
+            progress: 0,
             completed: false,
             active: false
           }
-          console.log('Created display task:', displayTask)
+          console.log('✅ Created display task:', displayTask.title, 'at', displayTask.timeStart)
           displayTasks.push(displayTask)
         } else {
-          console.warn(`Task ${taskId} not found in task list - it may have been deleted`)
+          console.warn(`❌ Time block ${timeBlockId} not found for task ${task.taskName}`)
         }
       }
     }
 
+    console.log('📊 Total display tasks created:', displayTasks.length)
     tasks.value = displayTasks
     updateStats()
   } catch (error: any) {
-    // If no schedules found, just show empty timeline
-    if (error.message?.includes('No future time blocks')) {
-      tasks.value = []
-      updateStats()
-    } else {
-      console.error('Failed to fetch schedule:', error)
-    }
+    console.error('❌ Failed to fetch schedule:', error)
+    tasks.value = []
+    updateStats()
   } finally {
     isLoading.value = false
   }
@@ -178,8 +230,8 @@ const setHoveredTask = (taskId: string | null) => {
   console.log('🎯 Updated hoveredTaskId value:', hoveredTaskId.value)
 }
 
-// Generate hour chunks (24 hours) - 150px per hour for more space
-const HOUR_HEIGHT = 150
+// Generate hour chunks (24 hours) - 200px per hour for more space
+const HOUR_HEIGHT = 200
 const MINUTE_HEIGHT = HOUR_HEIGHT / 60  // Height per minute
 const BLOCK_DURATION = 15  // 15-minute blocks
 const BLOCK_HEIGHT = MINUTE_HEIGHT * BLOCK_DURATION  // Height of each 15-min block
@@ -198,28 +250,41 @@ const timeBlocks = Array.from({ length: 24 * 4 }, (_, i) => {
   }
 })
 
+// Half-hour chunks for hover (48 half-hour blocks in 24 hours)
+const halfHourChunks = Array.from({ length: 48 }, (_, i) => {
+  const totalMinutes = i * 30
+  const hour = Math.floor(totalMinutes / 60)
+  const minute = totalMinutes % 60
+  return {
+    index: i,
+    hour,
+    minute,
+    position: (totalMinutes / 60) * HOUR_HEIGHT,
+    height: HOUR_HEIGHT / 2  // Half hour = 100px
+  }
+})
+
 const hourChunks = Array.from({ length: 24 }, (_, i) => ({
   hour: i,
   position: i * HOUR_HEIGHT,
   height: HOUR_HEIGHT
 }))
 
-// Check if an hour chunk has any tasks
-const hasTaskInHour = (hour: number) => {
+// Check if a half-hour chunk has any tasks
+const hasTaskInHalfHour = (position: number, height: number) => {
   return tasks.value.some(task => {
     const taskStartPos = getTaskPosition(task.timeStart)
-    const taskEndPos = taskStartPos + getTaskHeight(task.duration)
-    const hourStartPos = hour * HOUR_HEIGHT
-    const hourEndPos = hourStartPos + HOUR_HEIGHT
+    const taskEndPos = taskStartPos + getTaskHeight(task.timeStart, task.timeEnd)
+    const chunkEndPos = position + height
 
-    // Check if task overlaps with this hour
-    return (taskStartPos < hourEndPos && taskEndPos > hourStartPos)
+    // Check if task overlaps with this chunk
+    return (taskStartPos < chunkEndPos && taskEndPos > position)
   })
 }
 
-// Open add task modal for specific hour
-const openAddTaskModal = (hour: number) => {
-  selectedHourForNewTask.value = hour
+// Open add task modal for specific time
+const openAddTaskModal = (hour: number, minute: number = 0) => {
+  selectedHourForNewTask.value = hour + (minute / 60)
   showAddTaskModal.value = true
 }
 
@@ -427,28 +492,73 @@ const handleTaskSubmit = async (taskData: any) => {
       throw new Error('Task was created but taskId is missing')
     }
 
-    // Assign the task to a time block (using Unix timestamps)
-    const timeBlockResult = await ScheduleTimeAPI.assignTimeBlock({
+    // Check if a time block already exists for this time range
+    console.log('🔍 Checking for existing time blocks at this time...')
+    const allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    console.log('📋 Found', allSchedules.length, 'existing time blocks')
+
+    // Find a time block with matching start and end times
+    const existingBlock = allSchedules.find(block =>
+      block.start === startTimestamp && block.end === endTimestamp
+    )
+
+    let timeBlockId: string
+
+    if (existingBlock) {
+      console.log('✅ Found existing time block:', existingBlock.timeBlockId)
+      console.log('✅ Current tasks in block:', existingBlock.taskIdSet)
+      timeBlockId = existingBlock.timeBlockId
+
+      // Check if task is already in the time block
+      if (!existingBlock.taskIdSet.includes(newTask.taskId)) {
+        console.log('➕ Adding task to existing time block via assignTimeBlock')
+        // Use assignTimeBlock which will add to existing block
+        const result = await ScheduleTimeAPI.assignTimeBlock({
+          owner: CURRENT_USER,
+          taskId: newTask.taskId,
+          start: startTimestamp,
+          end: endTimestamp
+        })
+        console.log('✅ Task added to time block:', result.timeBlockId)
+      } else {
+        console.log('⚠️ Task already in time block')
+      }
+    } else {
+      console.log('➕ No existing time block found, creating new one')
+      // Create new time block with this task
+      const timeBlockResult = await ScheduleTimeAPI.assignTimeBlock({
+        owner: CURRENT_USER,
+        taskId: newTask.taskId,
+        start: startTimestamp,
+        end: endTimestamp
+      })
+      console.log('✅ New time block created:', timeBlockResult.timeBlockId)
+      timeBlockId = timeBlockResult.timeBlockId
+    }
+
+    console.log('🔗 Calling TaskCatalog.assignSchedule with:', {
       owner: CURRENT_USER,
       taskId: newTask.taskId,
-      start: startTimestamp,
-      end: endTimestamp
+      timeBlockId: timeBlockId
     })
 
-    console.log('Time block assigned:', timeBlockResult)
-
-    // Also update the task to reference this time block
+    // Update the task to reference this time block
     await TaskCatalogAPI.assignSchedule(
       CURRENT_USER,
       newTask.taskId,
-      timeBlockResult.timeBlockId
+      timeBlockId
     )
 
-    console.log('Task linked to time block')
+    console.log('✅ Task linked to time block')
 
+    // Wait a bit before refreshing to ensure backend is updated
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    console.log('🔄 Refreshing schedule data...')
     // Refresh the schedule to show the new task
     await fetchScheduleData()
 
+    console.log('✅ Schedule refreshed, closing modal')
     showAddTaskModal.value = false
   } catch (error: any) {
     console.error('Failed to create task:', error)
@@ -459,6 +569,9 @@ const handleTaskSubmit = async (taskData: any) => {
 
 // Scroll to current time on mount and fetch data
 onMounted(async () => {
+  // Initialize selected date
+  selectedDate.value = formatDisplayDate(currentDate.value)
+
   // Fetch schedule data first
   await fetchScheduleData()
 
@@ -480,16 +593,29 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', endDrag)
 })
 
-// Generate 24-hour time markers
-const timeMarkers = Array.from({ length: 24 }, (_, i) => {
-  const hour = i
+// Generate time markers for both full hours and half hours
+const timeMarkers = Array.from({ length: 48 }, (_, i) => {
+  const totalMinutes = i * 30
+  const hour = Math.floor(totalMinutes / 60)
+  const minute = totalMinutes % 60
+  const isFullHour = minute === 0
+
   const period = hour >= 12 ? 'PM' : 'AM'
   const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
-  const label = hour === 0 ? 'Midnight' : hour === 12 ? 'Noon' : `${displayHour} ${period}`
+
+  let label = ''
+  if (isFullHour) {
+    label = hour === 0 ? 'Midnight' : hour === 12 ? 'Noon' : `${displayHour} ${period}`
+  } else {
+    label = `:${minute}`
+  }
+
   return {
     hour,
+    minute,
     label,
-    position: i * HOUR_HEIGHT
+    position: (totalMinutes / 60) * HOUR_HEIGHT,
+    isFullHour
   }
 })
 
@@ -511,10 +637,11 @@ const getTaskPosition = (timeString: string) => {
   return hours * HOUR_HEIGHT + (minutes / 60) * HOUR_HEIGHT
 }
 
-// Calculate task height based on duration
-const getTaskHeight = (duration: number) => {
-  // duration in minutes, convert to pixels using HOUR_HEIGHT
-  return (duration / 60) * HOUR_HEIGHT
+// Calculate task height based on time range (more accurate than stored duration)
+const getTaskHeight = (timeStart: string, timeEnd: string) => {
+  const startPos = getTaskPosition(timeStart)
+  const endPos = getTaskPosition(timeEnd)
+  return endPos - startPos
 }
 </script>
 
@@ -545,10 +672,22 @@ const getTaskHeight = (duration: number) => {
             </button>
           </div>
         </div>
-        <select class="date-selector" v-model="selectedDate">
-          <option>Friday, September 27</option>
-          <option>Saturday, September 28</option>
-        </select>
+        <div class="date-navigation">
+          <button class="nav-button" @click="goToPreviousDay" title="Previous day">
+            ‹
+          </button>
+          <button
+            class="nav-button today-button"
+            :class="{ active: isToday() }"
+            @click="goToToday"
+            title="Go to today"
+          >
+            {{ selectedDate }}
+          </button>
+          <button class="nav-button" @click="goToNextDay" title="Next day">
+            ›
+          </button>
+        </div>
       </div>
     </div>
 
@@ -591,20 +730,20 @@ const getTaskHeight = (duration: number) => {
           </div>
 
           <div class="timeline-content" ref="timelineContentRef">
-            <!-- Hour chunks for hover detection -->
+            <!-- Half-hour chunks for hover detection -->
             <div
-              v-for="chunk in hourChunks"
-              :key="chunk.hour"
+              v-for="chunk in halfHourChunks"
+              :key="`${chunk.hour}-${chunk.minute}`"
               class="hour-chunk"
               :style="{ top: chunk.position + 'px', height: chunk.height + 'px' }"
-              @mouseenter="hoveredHour = chunk.hour"
+              @mouseenter="hoveredHour = chunk.index"
               @mouseleave="hoveredHour = null"
             >
-              <!-- Shadow task box for this hour (only show if no tasks in this hour) -->
+              <!-- Shadow task box for this half-hour (only show if no tasks in this half-hour) -->
               <div
-                v-if="hoveredHour === chunk.hour && !hasTaskInHour(chunk.hour)"
+                v-if="hoveredHour === chunk.index && !hasTaskInHalfHour(chunk.position, chunk.height)"
                 class="shadow-task-box"
-                @click="openAddTaskModal(chunk.hour)"
+                @click="openAddTaskModal(chunk.hour, chunk.minute)"
               >
                 <span class="shadow-task-text">Add Task</span>
                 <button class="shadow-task-button">+</button>
@@ -652,7 +791,7 @@ const getTaskHeight = (duration: number) => {
               ]"
               :style="{
                 top: getTaskPosition(task.timeStart) + 'px',
-                height: getTaskHeight(task.duration) + 'px'
+                height: getTaskHeight(task.timeStart, task.timeEnd) + 'px'
               }"
               @mousedown="startDrag($event, task)"
               @mouseenter="setHoveredTask(task.id)"
@@ -778,6 +917,43 @@ const getTaskHeight = (duration: number) => {
   backdrop-filter: blur(10px);
 }
 
+.date-navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(245, 232, 216, 0.1);
+  border: 1px solid rgba(245, 232, 216, 0.2);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.nav-button {
+  background: transparent;
+  border: none;
+  color: rgba(245, 232, 216, 0.8);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.nav-button:hover {
+  background: rgba(245, 232, 216, 0.15);
+  color: #F5E8D8;
+}
+
+.nav-button.today-button {
+  padding: 8px 16px;
+}
+
+.nav-button.today-button.active {
+  background: rgba(255, 111, 97, 0.2);
+  color: #FF6F61;
+}
+
 .date-selector {
   background: rgba(245, 232, 216, 0.1);
   border: 1px solid rgba(245, 232, 216, 0.2);
@@ -789,6 +965,7 @@ const getTaskHeight = (duration: number) => {
   cursor: pointer;
   backdrop-filter: blur(10px);
   transition: all 0.2s ease;
+  display: none;
 }
 
 .date-selector:hover {
@@ -919,21 +1096,45 @@ const getTaskHeight = (duration: number) => {
   left: 0;
   width: 85px;
   text-align: right;
-  font-size: 11px;
-  color: #888;
-  font-weight: 500;
   transform: translateY(-8px);
   padding-right: 12px;
+}
+
+/* Full hour markers - more prominent */
+.time-marker:nth-child(odd) {
+  font-size: 12px;
+  color: #AAA;
+  font-weight: bold;
+}
+
+/* Half hour markers - subtle */
+.time-marker:nth-child(even) {
+  font-size: 10px;
+  color: #666;
+  font-weight: 400;
 }
 
 .time-dot {
   position: absolute;
   right: -3px;
   top: -1px;
-  width: 4px;
-  height: 4px;
-  background: #555;
   border-radius: 50%;
+}
+
+/* Full hour dots - blue and larger */
+.time-marker:nth-child(odd) .time-dot {
+  width: 5px;
+  height: 5px;
+  background: #799EFF;
+}
+
+/* Half hour dots - dark and smaller */
+.time-marker:nth-child(even) .time-dot {
+  width: 3px;
+  height: 3px;
+  background: #444;
+  top: 0px;
+  right: -2px;
 }
 
 .current-time-indicator {
@@ -1013,7 +1214,7 @@ const getTaskHeight = (duration: number) => {
 .task-card {
   background: #2a2a2a;
   border-radius: 8px;
-  padding: 16px;
+  padding: 10px 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   border: 1px solid #3a3a3a;
   cursor: pointer;
@@ -1024,6 +1225,7 @@ const getTaskHeight = (duration: number) => {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  gap: 6px;
   min-height: 80px;
   z-index: 10;
 }
@@ -1173,16 +1375,16 @@ const getTaskHeight = (duration: number) => {
 
 .task-delete-button {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 32px;
-  height: 32px;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: #FF3232;
   color: white;
   border-radius: 50%;
   cursor: pointer;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: bold;
   line-height: 1;
   display: flex;
@@ -1221,38 +1423,38 @@ const getTaskHeight = (duration: number) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  gap: 8px;
+  gap: 6px;
 }
 
 .task-time {
-  font-size: 11px;
+  font-size: 9px;
   color: #888;
   font-weight: 500;
   background: rgba(245, 232, 216, 0.05);
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
   border: 1px solid rgba(245, 232, 216, 0.1);
   white-space: nowrap;
+  line-height: 1.2;
 }
 
 .task-duration {
-  font-size: 10px;
+  font-size: 9px;
   color: #888;
   background: rgba(218, 165, 32, 0.1);
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
   font-weight: 500;
   border: 1px solid rgba(218, 165, 32, 0.2);
   white-space: nowrap;
+  line-height: 1.2;
 }
 
 .task-title {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 700;
   color: #F5E8D8;
-  margin-bottom: 12px;
-  line-height: 1.3;
+  line-height: 1.2;
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1263,25 +1465,26 @@ const getTaskHeight = (duration: number) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
-  margin-top: 4px;
+  gap: 6px;
 }
 
 .task-type {
-  font-size: 11px;
+  font-size: 9px;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 500;
+  line-height: 1.2;
 }
 
 .priority-badge {
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 8px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  line-height: 1.2;
 }
 
 .high-priority .priority-badge {
@@ -1304,7 +1507,7 @@ const getTaskHeight = (duration: number) => {
 
 .task-progress {
   width: 100%;
-  height: 4px;
+  height: 3px;
   background: rgba(245, 232, 216, 0.1);
   border-radius: 2px;
   overflow: hidden;
