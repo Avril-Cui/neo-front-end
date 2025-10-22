@@ -5,7 +5,7 @@
  */
 
 // Enable mock time for development
-const MOCK_TIME_ENABLED = true
+const MOCK_TIME_ENABLED = false
 
 // Mock time: 9:00 AM today
 function getMockTime(): number {

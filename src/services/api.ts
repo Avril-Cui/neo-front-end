@@ -1,7 +1,7 @@
 const API_BASE_URL = 'http://localhost:8000'
 
-// Current user for prototype
-export const CURRENT_USER = 'Friday'
+// Current user for prototype - now managed by auth store
+// export const CURRENT_USER = 'Friday'
 
 // Task interfaces (as returned by API)
 interface TaskResponse {
@@ -353,5 +353,68 @@ export const AdaptiveScheduleAPI = {
       start: startTimestamp,
       end: endTimestamp
     })
+  },
+}
+
+// Auth interfaces
+export interface AuthUser {
+  userId: string
+  username: string
+  email?: string
+}
+
+// Auth APIs
+export const AuthAPI = {
+  async registerUser(params: {
+    username: string
+    email: string
+    password: string
+  }): Promise<AuthUser> {
+    const response = await apiCall<{ userId: string; username: string }>('/api/Auth/registerUser', params)
+    return {
+      userId: response.userId,
+      username: response.username,
+    }
+  },
+
+  async authenticateUser(params: {
+    email: string
+    password: string
+  }): Promise<AuthUser> {
+    const response = await apiCall<{ userId: string; username: string }>('/api/Auth/authenticateUser', params)
+    return {
+      userId: response.userId,
+      username: response.username,
+    }
+  },
+
+  async getUserById(userId: string): Promise<AuthUser> {
+    const response = await apiCall<{ userId: string; username: string; email: string }>('/api/Auth/getUserById', { userId })
+    return {
+      userId: response.userId,
+      username: response.username,
+      email: response.email,
+    }
+  },
+
+  async getUserByUsername(username: string): Promise<AuthUser> {
+    const response = await apiCall<{ userId: string; username: string; email: string }>('/api/Auth/getUserByUsername', { username })
+    return {
+      userId: response.userId,
+      username: response.username,
+      email: response.email,
+    }
+  },
+
+  async updatePassword(params: {
+    userId: string
+    oldPassword: string
+    newPassword: string
+  }): Promise<void> {
+    return apiCall<void>('/api/Auth/updatePassword', params)
+  },
+
+  async deleteUser(userId: string): Promise<void> {
+    return apiCall<void>('/api/Auth/deleteUser', { userId })
   },
 }

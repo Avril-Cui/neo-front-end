@@ -35,21 +35,29 @@
             </button>
           </div>
         </div>
-        <div class="date-navigation">
-          <button class="nav-button" @click="goToPreviousDay" title="Previous day">
-            ‹
-          </button>
-          <button
-            class="nav-button today-button"
-            :class="{ active: isToday() }"
-            @click="goToToday"
-            title="Go to today"
-          >
-            {{ selectedDate }}
-          </button>
-          <button class="nav-button" @click="goToNextDay" title="Next day">
-            ›
-          </button>
+        <div class="header-right">
+          <div class="date-navigation">
+            <button class="nav-button" @click="goToPreviousDay" title="Previous day">
+              ‹
+            </button>
+            <button
+              class="nav-button today-button"
+              :class="{ active: isToday() }"
+              @click="goToToday"
+              title="Go to today"
+            >
+              {{ selectedDate }}
+            </button>
+            <button class="nav-button" @click="goToNextDay" title="Next day">
+              ›
+            </button>
+          </div>
+          <div class="user-section">
+            <span class="username">{{ authStore.getCurrentUsername() }}</span>
+            <button class="logout-button" @click="handleLogout" title="Log out">
+              Log Out
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -243,7 +251,19 @@ import { useRouter } from 'vue-router'
 import AddTaskModal from '../components/AddTaskModal.vue'
 import PreferenceModal from '../components/PreferenceModal.vue'
 import LoadingModal from '../components/LoadingModal.vue'
-import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, AdaptiveScheduleAPI, CURRENT_USER, type Task, type Session, type TimeBlock, type AdaptiveBlock, type DroppedTask } from '../services/api'
+import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, AdaptiveScheduleAPI, type Task, type Session, type TimeBlock, type AdaptiveBlock, type DroppedTask } from '../services/api'
+import { useAuthStore } from '../stores/auth'
+
+// Auth store
+const authStore = useAuthStore()
+const CURRENT_USER = authStore.getCurrentUserId() || 'Friday'
+
+const handleLogout = () => {
+  if (confirm('Are you sure you want to log out?')) {
+    authStore.clearUser()
+    router.push('/login')
+  }
+}
 
 // Helper to round timestamp to nearest 30 minutes
 const roundToNearest30Min = (timestamp: number): number => {
@@ -1243,6 +1263,12 @@ onMounted(async () => {
   backdrop-filter: blur(10px);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .date-navigation {
   display: flex;
   align-items: center;
@@ -1251,6 +1277,40 @@ onMounted(async () => {
   border: 1px solid rgba(245, 232, 216, 0.2);
   border-radius: 12px;
   padding: 4px;
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(245, 232, 216, 0.1);
+  border: 1px solid rgba(245, 232, 216, 0.2);
+  border-radius: 12px;
+  padding: 8px 16px;
+}
+
+.username {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F5E8D8;
+}
+
+.logout-button {
+  background: rgba(255, 111, 97, 0.2);
+  border: 1px solid rgba(255, 111, 97, 0.3);
+  color: #FF6F61;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logout-button:hover {
+  background: rgba(255, 111, 97, 0.3);
+  border-color: rgba(255, 111, 97, 0.5);
+  transform: translateY(-1px);
 }
 
 .nav-button {

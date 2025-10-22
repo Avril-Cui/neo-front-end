@@ -1,10 +1,22 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, CURRENT_USER, type Task, type Session } from '../services/api'
+import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, type Task, type Session } from '../services/api'
+import { useAuthStore } from '../stores/auth'
 
 // Router
 const router = useRouter()
+
+// Auth store
+const authStore = useAuthStore()
+const CURRENT_USER = authStore.getCurrentUserId() || 'Friday'
+
+const handleLogout = () => {
+  if (confirm('Are you sure you want to log out?')) {
+    authStore.clearUser()
+    router.push('/login')
+  }
+}
 
 // Timer state
 const isRunning = ref(false)
@@ -558,6 +570,12 @@ onUnmounted(() => {
             <button class="toggle-option" @click="navigateToTasks">Tasks</button>
           </div>
         </div>
+        <div class="user-section">
+          <span class="username">{{ authStore.getCurrentUsername() }}</span>
+          <button class="logout-button" @click="handleLogout" title="Log out">
+            Log Out
+          </button>
+        </div>
       </div>
     </div>
 
@@ -870,6 +888,40 @@ onUnmounted(() => {
   padding: 4px;
   gap: 4px;
   border: 1px solid rgba(245, 232, 216, 0.2);
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(245, 232, 216, 0.1);
+  border: 1px solid rgba(245, 232, 216, 0.2);
+  border-radius: 12px;
+  padding: 8px 16px;
+}
+
+.username {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F5E8D8;
+}
+
+.logout-button {
+  background: rgba(255, 111, 97, 0.2);
+  border: 1px solid rgba(255, 111, 97, 0.3);
+  color: #FF6F61;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logout-button:hover {
+  background: rgba(255, 111, 97, 0.3);
+  border-color: rgba(255, 111, 97, 0.5);
+  transform: translateY(-1px);
 }
 
 .toggle-option {
