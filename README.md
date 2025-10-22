@@ -1,6 +1,9 @@
 # Neo Frontend
 Most productivity tools force people into rigid plans that crumble the moment real life interferes, while students and professionals need not just another complex and static planner, but a dynamic companion that learns, adjusts, and helps them actually boost productivity. Neo is the ONE calendar app you need. Think of it as your digital personal assistant that adjust your daily plans dynamically as your day unfolds. Neo tackles the scheduling and productivity problems by making daily planning flexible and adaptive.
 
+# Screen Recording
+[![Watch the video](https://img.youtube.com/vi/1UaaDkHHux0/hqdefault.jpg)](https://www.youtube.com/watch?v=1UaaDkHHux0)
+
 # User Journey
 Friday is a Productivist. As a product manager at Microsoft, Friday balances cross-team meetings, roadmap planning, and individual focus work every day. To stay on top of everything, Friday creates detailed schedules of his daily plan in Notion Calendar, and asks his colleagues and clients to book meetings through this platform too.
 
