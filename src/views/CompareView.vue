@@ -137,6 +137,13 @@
               height: getAdaptiveBlockHeight(adaptiveBlock) + 'px'
             }"
           >
+            <button
+              class="delete-adaptive-block-btn"
+              @click="deleteAdaptiveBlock(adaptiveBlock.timeBlockId)"
+              title="Delete this adaptive block"
+            >
+              ✕
+            </button>
             <div
               v-for="task in adaptiveBlock.tasks"
               :key="task.taskId"
@@ -893,6 +900,27 @@ const handlePreferenceProceed = async (preference: string) => {
     console.error('Failed to generate adaptive schedule:', error)
     showLoadingModal.value = false
     alert('Failed to generate adaptive schedule. Please try again.')
+  }
+}
+
+// Delete an adaptive block
+const deleteAdaptiveBlock = async (timeBlockId: string) => {
+  try {
+    if (!confirm('Are you sure you want to delete this adaptive block?')) {
+      return
+    }
+
+    await AdaptiveScheduleAPI.deleteAdaptiveBlock(CURRENT_USER, timeBlockId)
+
+    // Remove from local state
+    adaptiveBlocksWithTasks.value = adaptiveBlocksWithTasks.value.filter(
+      block => block.timeBlockId !== timeBlockId
+    )
+
+    console.log(`Deleted adaptive block ${timeBlockId}`)
+  } catch (error) {
+    console.error('Failed to delete adaptive block:', error)
+    alert('Failed to delete adaptive block. Please try again.')
   }
 }
 
@@ -1805,6 +1833,35 @@ onMounted(async () => {
   right: 0;
   padding: 8px 0;
   box-sizing: border-box;
+}
+
+.delete-adaptive-block-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(220, 38, 38, 0.9);
+  color: white;
+  border: none;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  line-height: 1;
+  padding: 0;
+}
+
+.delete-adaptive-block-btn:hover {
+  opacity: 1;
+  background: rgba(220, 38, 38, 1);
+  transform: scale(1.1);
 }
 
 .adaptive-task {

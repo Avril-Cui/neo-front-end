@@ -330,6 +330,13 @@ export const AdaptiveScheduleAPI = {
     }
   },
 
+  async deleteAdaptiveBlock(owner: string, timeBlockId: string): Promise<void> {
+    await apiCall<{}>('/api/AdaptiveSchedule/deleteAdaptiveBlock', {
+      owner,
+      timeBlockId
+    })
+  },
+
   async assignAdaptiveSchedule(params: {
     owner: string
     taskId: string
