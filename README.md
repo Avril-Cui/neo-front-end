@@ -19,5 +19,5 @@ By afternoon, Friday looks at the compare interface and notices that too many in
 
 At the end of the day, Friday revisits the compare page. The timeline shows what matched perfectly in green, what deviated in red, and what got dynamically rescheduled in grey. Instead of feeling guilty about unfinished items, Friday sees a rationalized schedule where the most important tasks were accomplished despite interruptions.
 
-Neo reframes deviations as learning opportunities, and offers Friday insights like: “Spec writing tasks take 1.5x longer than estimated.” For Friday, this means ending the day with clarity rather than guilt. He learns about his own focus pattern, energy cycles, and work habits. Most importantly, Neo helps him finished most of his high-priority tasks. Over time, Friday builds more realistic schedules and feels more effective as a busy product manager.
+Neo reframes deviations as learning opportunities. For Friday, this means ending the day with clarity rather than guilt. He learns about his own focus pattern, energy cycles, and work habits. Most importantly, Neo helps him finished most of his high-priority tasks. Over time, Friday builds more realistic schedules and feels more effective as a busy product manager.
 
