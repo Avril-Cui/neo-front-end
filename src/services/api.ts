@@ -206,20 +206,24 @@ export const RoutineLogAPI = {
     return apiCall<{ session: string }>('/api/RoutineLog/createSession', params)
   },
 
-  async startSession(owner: string, session: string): Promise<void> {
+  async startSession(owner: string, session: any): Promise<void> {
     return apiCall<void>('/api/RoutineLog/startSession', { owner, session })
   },
 
-  async endSession(owner: string, session: string): Promise<void> {
+  async endSession(owner: string, session: any): Promise<void> {
     return apiCall<void>('/api/RoutineLog/endSession', { owner, session })
   },
 
-  async interruptSession(owner: string, session: string, interruptReason: string): Promise<void> {
+  async interruptSession(owner: string, session: any, interruptReason: string): Promise<void> {
     return apiCall<void>('/api/RoutineLog/interruptSession', {
       owner,
       session,
       interruptReason,
     })
+  },
+
+  async deleteSession(owner: string, session: any): Promise<void> {
+    return apiCall<void>('/api/RoutineLog/deleteSession', { owner, session })
   },
 }
 

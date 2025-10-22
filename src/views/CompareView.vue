@@ -186,15 +186,22 @@
 
               <!-- Mismatch -->
               <template v-else>
-                <div v-if="comparison.planned" class="planned-task">
-                  <div class="task-time">{{ comparison.planned.timeRange }}</div>
-                  <div class="task-title">{{ comparison.planned.taskName }}</div>
-                  <div class="task-meta">
-                    <span v-if="!isShortSession(comparison.planned.duration)" class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</span>
-                    <span v-if="comparison.planned.varianceText" class="variance-badge" :class="{ 'skipped': comparison.planned.varianceText === 'Skipped' }">
-                      {{ comparison.planned.varianceText }}
-                    </span>
+                <div v-if="comparison.planned" class="planned-task" :class="{ 'short-task': isShortSession(comparison.planned.duration) }">
+                  <!-- Short task: only show task name with inline label -->
+                  <div class="task-title-inline" v-if="isShortSession(comparison.planned.duration)">
+                    {{ comparison.planned.taskName }} <span class="inline-label">PLANNED</span>
                   </div>
+                  <!-- Regular task: show time, title, and metadata -->
+                  <template v-else>
+                    <div class="task-time">{{ comparison.planned.timeRange }}</div>
+                    <div class="task-title">{{ comparison.planned.taskName }}</div>
+                    <div class="task-meta">
+                      <span class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</span>
+                      <span v-if="comparison.planned.varianceText" class="variance-badge" :class="{ 'skipped': comparison.planned.varianceText === 'Skipped' }">
+                        {{ comparison.planned.varianceText }}
+                      </span>
+                    </div>
+                  </template>
                 </div>
                 <div v-else class="no-task">{{ comparison.noPlannedText || 'No planned task' }}</div>
 
@@ -202,15 +209,22 @@
                   {{ comparison.mismatchIcon }}
                 </div>
 
-                <div v-if="comparison.actual" class="actual-task">
-                  <div class="task-time">{{ comparison.actual.timeRange }}</div>
-                  <div class="task-title">{{ comparison.actual.taskName }}</div>
-                  <div class="task-meta">
-                    <span v-if="!isShortSession(comparison.actual.duration)" class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</span>
-                    <span v-if="comparison.actual.varianceText" class="variance-badge">
-                      {{ comparison.actual.varianceText }}
-                    </span>
+                <div v-if="comparison.actual" class="actual-task" :class="{ 'short-task': isShortSession(comparison.actual.duration) }">
+                  <!-- Short task: only show task name with inline label -->
+                  <div class="task-title-inline" v-if="isShortSession(comparison.actual.duration)">
+                    {{ comparison.actual.taskName }} <span class="inline-label">ACTUAL</span>
                   </div>
+                  <!-- Regular task: show time, title, and metadata -->
+                  <template v-else>
+                    <div class="task-time">{{ comparison.actual.timeRange }}</div>
+                    <div class="task-title">{{ comparison.actual.taskName }}</div>
+                    <div class="task-meta">
+                      <span class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</span>
+                      <span v-if="comparison.actual.varianceText" class="variance-badge">
+                        {{ comparison.actual.varianceText }}
+                      </span>
+                    </div>
+                  </template>
                 </div>
                 <div v-else class="no-task">{{ comparison.noActualText || 'Task skipped' }}</div>
               </template>
@@ -314,23 +328,26 @@ const formatDisplayDate = (date: Date) => {
 }
 
 // Navigation functions
-const goToPreviousDay = () => {
+const goToPreviousDay = async () => {
   const newDate = new Date(currentDate.value)
   newDate.setDate(newDate.getDate() - 1)
   currentDate.value = newDate
   selectedDate.value = formatDisplayDate(newDate)
+  await fetchComparisons()
 }
 
-const goToToday = () => {
+const goToToday = async () => {
   currentDate.value = new Date()
   selectedDate.value = formatDisplayDate(currentDate.value)
+  await fetchComparisons()
 }
 
-const goToNextDay = () => {
+const goToNextDay = async () => {
   const newDate = new Date(currentDate.value)
   newDate.setDate(newDate.getDate() + 1)
   currentDate.value = newDate
   selectedDate.value = formatDisplayDate(newDate)
+  await fetchComparisons()
 }
 
 // Check if current date is today
@@ -944,6 +961,15 @@ const deleteAdaptiveBlock = async (timeBlockId: string) => {
   }
 }
 
+// Helper to check if a timestamp is on the selected date
+const isOnSelectedDate = (timestamp: number): boolean => {
+  const date = new Date(timestamp)
+  const selected = currentDate.value
+  return date.getFullYear() === selected.getFullYear() &&
+         date.getMonth() === selected.getMonth() &&
+         date.getDate() === selected.getDate()
+}
+
 // Fetch and process comparisons
 const fetchComparisons = async () => {
   try {
@@ -952,8 +978,10 @@ const fetchComparisons = async () => {
     // 1. Get all planned schedules
     let plannedSchedules: TimeBlock[] = []
     try {
-      plannedSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
-      console.log(`Fetched ${plannedSchedules.length} planned time blocks:`, plannedSchedules)
+      const allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+      // Filter schedules for the selected date
+      plannedSchedules = allSchedules.filter(block => isOnSelectedDate(block.start))
+      console.log(`Fetched ${plannedSchedules.length} planned time blocks for ${selectedDate.value}:`, plannedSchedules)
     } catch (error: any) {
       console.error('Error fetching planned schedules:', error)
       if (error.message?.includes('No future time blocks found')) {
@@ -966,7 +994,13 @@ const fetchComparisons = async () => {
     // 2. Get all user sessions
     let userSessions: Session[] = []
     try {
-      userSessions = await RoutineLogAPI.getUserSessions(CURRENT_USER)
+      const allSessions = await RoutineLogAPI.getUserSessions(CURRENT_USER)
+      // Filter sessions for the selected date
+      userSessions = allSessions.filter(session => {
+        if (!session.start) return false
+        return isOnSelectedDate(new Date(session.start).getTime())
+      })
+      console.log(`Fetched ${userSessions.length} sessions for ${selectedDate.value}:`, userSessions)
     } catch (error: any) {
       if (!Array.isArray(userSessions)) {
         userSessions = []
@@ -1000,7 +1034,7 @@ const fetchComparisons = async () => {
         const matchingSession = userSessions.find(session => {
           const hasTime = session.start && session.end
           const linkedMatches = session.linkedTaskId === taskId
-          if (!hasTime || !linkedMatches) {
+          if (!hasTime || !linkedMatches || !session.start || !session.end) {
             return false
           }
           const sessionStart = roundToNearest30Min(new Date(session.start).getTime())
@@ -1625,6 +1659,46 @@ onMounted(async () => {
   border-radius: 3px;
   border: 1px solid rgba(255, 111, 97, 0.3);
   opacity: 0.7;
+}
+
+/* Hide label for short tasks (30 min or less) */
+.planned-task.short-task::before,
+.actual-task.short-task::before {
+  display: none;
+}
+
+/* Inline title for short tasks */
+.task-title-inline {
+  font-size: 12px;
+  font-weight: 600;
+  color: #F5E8D8;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-label {
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.planned-task .inline-label {
+  background: #2A2A2A;
+  color: #CCC;
+  border: 1px solid rgba(245, 232, 216, 0.3);
+}
+
+.actual-task .inline-label {
+  background: #2A1F1A;
+  color: #DDD;
+  border: 1px solid rgba(255, 111, 97, 0.3);
 }
 
 .task-perfect-match {

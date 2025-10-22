@@ -423,6 +423,92 @@ const calculateDuration = (start: string | number, end: string | number): number
   return endTime - startTime
 }
 
+// Delete a session
+const deleteSession = async (sessionLog: SessionLog, event: MouseEvent) => {
+  // Stop propagation to prevent triggering the resume action
+  event.stopPropagation()
+
+  if (!confirm(`Are you sure you want to delete the session "${sessionLog.name}"?`)) {
+    return
+  }
+
+  try {
+    await RoutineLogAPI.deleteSession(CURRENT_USER, { _id: sessionLog.id })
+    console.log('Session deleted:', sessionLog.id)
+
+    // Refresh the session list
+    await fetchUserSessions()
+
+    alert('Session deleted successfully')
+  } catch (error: any) {
+    console.error('Failed to delete session:', error)
+    alert(`Failed to delete session: ${error.message || 'Unknown error'}`)
+  }
+}
+
+// Resume an active session by clicking on it
+const resumeActiveSession = async (sessionLog: SessionLog) => {
+  // Only allow resuming active sessions
+  if (!sessionLog.active) {
+    return
+  }
+
+  try {
+    // Fetch all sessions to get the full session data
+    const sessions = await RoutineLogAPI.getUserSessions(CURRENT_USER)
+    const session = sessions.find(s => s.sessionId === sessionLog.id)
+
+    if (!session || !session.isActive || !session.start) {
+      alert('Cannot resume this session')
+      return
+    }
+
+    // Set current session info
+    currentSessionId.value = session.sessionId
+    currentSessionName.value = session.sessionName
+    selectedTaskId.value = session.linkedTaskId || null
+
+    // Calculate elapsed time since session started
+    const startTimestamp = new Date(session.start).getTime()
+    const now = Date.now()
+    const elapsed = now - startTimestamp
+
+    // Update timer state
+    startTime.value = startTimestamp
+    elapsedTime.value = elapsed
+    isRunning.value = true
+    isPaused.value = session.isPaused
+
+    // If session has a linked task, get its duration
+    if (session.linkedTaskId) {
+      try {
+        const task = await TaskCatalogAPI.getTask(CURRENT_USER, session.linkedTaskId)
+        plannedDuration.value = task.duration
+        taskInput.value = task.taskName
+      } catch (error) {
+        console.error('Failed to fetch linked task:', error)
+      }
+    } else {
+      // For ad-hoc sessions, use default duration
+      plannedDuration.value = durationValue.value * 60
+      taskInput.value = session.sessionName
+    }
+
+    // Start the timer interval
+    if (timerInterval) {
+      clearInterval(timerInterval)
+    }
+    timerInterval = window.setInterval(() => {
+      elapsedTime.value = Date.now() - startTime.value
+    }, 100)
+
+    console.log('Resumed active session:', session.sessionName)
+  } catch (error) {
+    console.error('Failed to resume session:', error)
+    alert('Failed to resume session')
+  }
+}
+
 // Fetch and process user sessions
 const fetchUserSessions = async () => {
   try {
@@ -756,8 +842,16 @@ onUnmounted(() => {
             v-for="log in sessionLogs"
             :key="log.id"
             class="session-item"
-            :class="{ active: log.active }"
+            :class="{ active: log.active, clickable: log.active }"
+            @click="log.active ? resumeActiveSession(log) : null"
           >
+            <button
+              class="delete-session-button"
+              @click="deleteSession(log, $event)"
+              title="Delete session"
+            >
+              ✕
+            </button>
             <div class="session-header-item">
               <div class="session-info">
                 <div class="session-name">{{ log.name }}</div>
@@ -1558,10 +1652,51 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.delete-session-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 111, 97, 0.3);
+  background: rgba(255, 111, 97, 0.1);
+  color: #ff6f61;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.session-item:hover .delete-session-button {
+  opacity: 1;
+}
+
+.delete-session-button:hover {
+  background: rgba(255, 111, 97, 0.2);
+  border-color: rgba(255, 111, 97, 0.5);
+  transform: scale(1.1);
+}
+
 .session-item.active {
   border-color: #ff6f61;
   background: linear-gradient(135deg, #2a1f1a 0%, #3a2a20 100%);
   box-shadow: 0 4px 16px rgba(255, 111, 97, 0.15);
+}
+
+.session-item.clickable {
+  cursor: pointer;
+}
+
+.session-item.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 111, 97, 0.25);
+  border-color: #ff8875;
 }
 
 .session-item.active::before {
