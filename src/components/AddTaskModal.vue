@@ -4,10 +4,22 @@ import { ref, computed, watch } from 'vue'
 interface Props {
   show: boolean
   selectedHour?: number
+  editMode?: boolean
+  taskData?: {
+    taskId: string
+    taskName: string
+    category: string
+    duration: number
+    priority: number
+    splittable: boolean
+    deadline?: string
+    slack?: number
+    note?: string
+  }
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'submit', 'update'])
 
 // Helper function to format time as HH:MM
 const formatTime = (hour: number, minute: number = 0) => {
@@ -34,6 +46,20 @@ watch(() => props.selectedHour, (hour) => {
   if (hour !== undefined) {
     startTime.value = formatTime(hour, 0)
     endTime.value = formatTime(hour + 1, 0)
+  }
+}, { immediate: true })
+
+// Populate form fields when editing a task
+watch(() => props.taskData, (data) => {
+  if (data && props.editMode) {
+    taskName.value = data.taskName
+    selectedCategory.value = data.category
+    duration.value = data.duration / 60 // Convert from minutes to hours
+    selectedPriority.value = data.priority
+    splittable.value = data.splittable
+    deadline.value = data.deadline || ''
+    slack.value = data.slack ? data.slack / 60 : 0 // Convert from minutes to hours
+    notes.value = data.note || ''
   }
 }, { immediate: true })
 
@@ -99,6 +125,7 @@ const handleSubmit = () => {
   if (!taskName.value.trim()) return
 
   const formData = {
+    taskId: props.taskData?.taskId,
     taskName: taskName.value,
     category: selectedCategory.value,
     duration: duration.value * 60, // Convert to minutes
@@ -112,7 +139,11 @@ const handleSubmit = () => {
     selectedHour: props.selectedHour
   }
 
-  emit('submit', formData)
+  if (props.editMode) {
+    emit('update', formData)
+  } else {
+    emit('submit', formData)
+  }
   closeModal()
 }
 </script>
@@ -122,7 +153,7 @@ const handleSubmit = () => {
     <div v-if="show" class="modal-overlay" @click.self="closeModal">
       <div class="modal-container">
         <div class="modal-header">
-          <h1 class="modal-title">Add New Task</h1>
+          <h1 class="modal-title">{{ editMode ? 'Edit Task' : 'Add New Task' }}</h1>
           <button class="close-button" @click="closeModal">×</button>
         </div>
 
@@ -344,7 +375,7 @@ const handleSubmit = () => {
                 Cancel
               </button>
               <button type="submit" class="btn btn-primary">
-                Create Task
+                {{ editMode ? 'Update Task' : 'Create Task' }}
               </button>
             </div>
           </form>

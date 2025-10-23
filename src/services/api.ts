@@ -160,6 +160,38 @@ export const TaskCatalogAPI = {
       timeBlockId,
     })
   },
+
+  async updateTaskName(owner: string, taskId: string, taskName: string): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/updateTaskName', { owner, taskId, taskName })
+  },
+
+  async updateTaskCategory(owner: string, taskId: string, category: string): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/updateTaskCategory', { owner, taskId, category })
+  },
+
+  async updateTaskDuration(owner: string, taskId: string, duration: number): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/updateTaskDuration', { owner, taskId, duration })
+  },
+
+  async updateTaskPriority(owner: string, taskId: string, priority: number): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/updateTaskPriority', { owner, taskId, priority })
+  },
+
+  async updateTaskSplittable(owner: string, taskId: string, splittable: boolean): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/updateTaskSplittable', { owner, taskId, splittable })
+  },
+
+  async updateTaskDeadline(owner: string, taskId: string, deadline: string): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/updateTaskDeadline', { owner, taskId, deadline })
+  },
+
+  async updateTaskSlack(owner: string, taskId: string, slack: number): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/updateTaskSlack', { owner, taskId, slack })
+  },
+
+  async updateTaskNote(owner: string, taskId: string, note: string): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/updateTaskNote', { owner, taskId, note })
+  },
 }
 
 // RoutineLog interfaces

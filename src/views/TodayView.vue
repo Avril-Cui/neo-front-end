@@ -16,6 +16,8 @@ const CURRENT_USER = authStore.getCurrentUserId() || 'Friday'
 // Modal state
 const showAddTaskModal = ref(false)
 const selectedHourForNewTask = ref<number | undefined>(undefined)
+const isEditMode = ref(false)
+const editingTask = ref<Task | null>(null)
 
 // Task interface for display
 interface DisplayTask {
@@ -263,19 +265,8 @@ const hoveredHour = ref<number | null>(null)
 // Track hovered task for delete button
 const hoveredTaskId = ref<string | null>(null)
 
-// Drag and drop state
-const isDragging = ref(false)
-const draggedTask = ref<DisplayTask | null>(null)
-const dragStartPosition = ref({ top: 0, height: 0 })
-const dragPreviewPosition = ref({ top: 0, height: 0 })
-const dragPreviewTime = ref({ start: '', end: '' })
-
-// Debug: Log when hovering
 const setHoveredTask = (taskId: string | null) => {
-  console.log('🎯 HOVER EVENT - Task ID:', taskId)
-  console.log('🎯 Current hoveredTaskId value:', hoveredTaskId.value)
   hoveredTaskId.value = taskId
-  console.log('🎯 Updated hoveredTaskId value:', hoveredTaskId.value)
 }
 
 // Generate hour chunks (24 hours) - 200px per hour for more space
@@ -336,146 +327,6 @@ const openAddTaskModal = (hour: number, minute: number = 0) => {
   showAddTaskModal.value = true
 }
 
-// Drag and drop handlers
-const startDrag = (event: MouseEvent, task: DisplayTask) => {
-  // Don't start drag if clicking on delete button
-  if ((event.target as HTMLElement).classList.contains('task-delete-button')) {
-    return
-  }
-
-  console.log('🎯 Start dragging task:', task.title)
-  isDragging.value = true
-  draggedTask.value = task
-
-  // Store original position
-  dragStartPosition.value = {
-    top: getTaskPosition(task.timeStart),
-    height: getTaskHeight(task.timeStart, task.timeEnd)
-  }
-
-  // Initialize preview at current position
-  dragPreviewPosition.value = { ...dragStartPosition.value }
-  dragPreviewTime.value = {
-    start: task.timeStart,
-    end: task.timeEnd
-  }
-}
-
-const onDrag = (event: MouseEvent) => {
-  if (!isDragging.value || !draggedTask.value) return
-
-  event.preventDefault()
-
-  // Calculate position relative to timeline
-  const timelineContent = timelineContentRef.value
-  if (!timelineContent) return
-
-  const timelineRect = timelineContent.getBoundingClientRect()
-  const relativeY = event.clientY - timelineRect.top + (timelineContainerRef.value?.scrollTop || 0)
-
-  // Snap to 15-minute blocks
-  const totalMinutes = (relativeY / HOUR_HEIGHT) * 60
-  const snappedMinutes = Math.round(totalMinutes / BLOCK_DURATION) * BLOCK_DURATION
-
-  // Calculate new start time
-  const newStartHour = Math.floor(snappedMinutes / 60)
-  const newStartMinute = snappedMinutes % 60
-
-  // Keep the same duration
-  const durationMinutes = draggedTask.value.duration
-  const endTotalMinutes = snappedMinutes + durationMinutes
-  const newEndHour = Math.floor(endTotalMinutes / 60)
-  const newEndMinute = endTotalMinutes % 60
-
-  // Update preview position (snapped to 15-min blocks)
-  const snappedPosition = (snappedMinutes / 60) * HOUR_HEIGHT
-  dragPreviewPosition.value = {
-    top: snappedPosition,
-    height: dragStartPosition.value.height
-  }
-
-  // Update preview time display
-  const today = getCurrentDate()
-  const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), newStartHour, newStartMinute)
-  const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), newEndHour, newEndMinute)
-
-  dragPreviewTime.value = {
-    start: formatTime(startDate.getTime()),
-    end: formatTime(endDate.getTime())
-  }
-}
-
-const endDrag = async (event: MouseEvent) => {
-  if (!isDragging.value || !draggedTask.value) return
-
-  console.log('🎯 End dragging task:', draggedTask.value.title)
-
-  const task = draggedTask.value
-
-  // Parse the preview time to get timestamps
-  const parseTimeString = (timeStr: string) => {
-    const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i)
-    if (!match) return null
-
-    let hours = parseInt(match[1])
-    const minutes = parseInt(match[2])
-    const period = match[3].toUpperCase()
-
-    if (period === 'PM' && hours !== 12) hours += 12
-    if (period === 'AM' && hours === 12) hours = 0
-
-    const today = getCurrentDate()
-    return new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes).getTime()
-  }
-
-  const newStartTimestamp = parseTimeString(dragPreviewTime.value.start)
-  const newEndTimestamp = parseTimeString(dragPreviewTime.value.end)
-
-  if (!newStartTimestamp || !newEndTimestamp) {
-    console.error('Failed to parse preview time')
-    isDragging.value = false
-    draggedTask.value = null
-    return
-  }
-
-  console.log('🎯 New time:', dragPreviewTime.value.start, '-', dragPreviewTime.value.end)
-
-  try {
-    // 1. Remove task from old time block
-    console.log('🎯 Step 1: Removing task from old time block')
-    await ScheduleTimeAPI.removeTask(CURRENT_USER, task.taskId, task.timeBlockId)
-
-    // 2. Delete old schedule from task
-    console.log('🎯 Step 2: Deleting old schedule from task')
-    await TaskCatalogAPI.deleteSchedule(CURRENT_USER, task.taskId, task.timeBlockId)
-
-    // 3. Assign task to new time block
-    console.log('🎯 Step 3: Assigning task to new time block')
-    const timeBlockResult = await ScheduleTimeAPI.assignTimeBlock({
-      owner: CURRENT_USER,
-      taskId: task.taskId,
-      start: newStartTimestamp,
-      end: newEndTimestamp
-    })
-
-    // 4. Assign new schedule to task
-    console.log('🎯 Step 4: Assigning new schedule to task')
-    await TaskCatalogAPI.assignSchedule(CURRENT_USER, task.taskId, timeBlockResult.timeBlockId)
-
-    console.log('🎯 Task moved successfully!')
-
-    // Refresh the schedule
-    await fetchScheduleData()
-  } catch (error: any) {
-    console.error('🎯 Failed to move task:', error)
-    alert(`Failed to move task: ${error.message || 'Unknown error'}`)
-  } finally {
-    // Reset drag state
-    isDragging.value = false
-    draggedTask.value = null
-  }
-}
-
 // Delete task from time block
 const deleteTask = async (task: DisplayTask) => {
   console.log('🗑️ DELETE BUTTON CLICKED for task:', task.title, task.taskId)
@@ -527,6 +378,103 @@ const deleteTask = async (task: DisplayTask) => {
     } catch (refreshError) {
       console.error('🗑️ Failed to refresh after error:', refreshError)
     }
+  }
+}
+
+// Handle task card click - open for editing
+const handleTaskCardClick = async (displayTask: DisplayTask) => {
+  console.log('📝 Opening task for editing:', displayTask.title, displayTask.taskId)
+
+  try {
+    // Fetch full task details from API
+    const fullTask = await TaskCatalogAPI.getTask(CURRENT_USER, displayTask.taskId)
+    console.log('Full task details:', fullTask)
+
+    editingTask.value = fullTask
+    isEditMode.value = true
+    showAddTaskModal.value = true
+  } catch (error: any) {
+    console.error('Failed to fetch task details:', error)
+    alert(`Failed to load task details: ${error.message || 'Unknown error'}`)
+  }
+}
+
+// Handle task update
+const handleTaskUpdate = async (taskData: any) => {
+  try {
+    console.log('Updating task:', taskData)
+
+    if (!taskData.taskId) {
+      throw new Error('Task ID is missing')
+    }
+
+    // Check if start/end time has changed
+    const hasTimeChanged = taskData.startTime || taskData.endTime
+
+    // Find the current task's time block
+    const currentTask = tasks.value.find(t => t.taskId === taskData.taskId)
+
+    if (hasTimeChanged && currentTask) {
+      console.log('Time changed - updating time block assignment')
+
+      // Parse new start and end times
+      const selectedDay = currentDate.value
+      const [startHour, startMinute] = taskData.startTime.split(':')
+      const [endHour, endMinute] = taskData.endTime.split(':')
+
+      const startDate = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), parseInt(startHour), parseInt(startMinute))
+      const endDate = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), parseInt(endHour), parseInt(endMinute))
+
+      const newStartTimestamp = startDate.getTime()
+      const newEndTimestamp = endDate.getTime()
+
+      // Step 1: Remove task from current time block
+      console.log('Step 1: Removing task from old time block:', currentTask.timeBlockId)
+      await ScheduleTimeAPI.removeTask(CURRENT_USER, taskData.taskId, currentTask.timeBlockId)
+
+      // Step 2: Delete old schedule from task
+      console.log('Step 2: Deleting old schedule from task')
+      await TaskCatalogAPI.deleteSchedule(CURRENT_USER, taskData.taskId, currentTask.timeBlockId)
+
+      // Step 3: Assign task to new time block
+      console.log('Step 3: Assigning task to new time block')
+      const timeBlockResult = await ScheduleTimeAPI.assignTimeBlock({
+        owner: CURRENT_USER,
+        taskId: taskData.taskId,
+        start: newStartTimestamp,
+        end: newEndTimestamp
+      })
+
+      // Step 4: Assign new schedule to task
+      console.log('Step 4: Assigning new schedule to task')
+      await TaskCatalogAPI.assignSchedule(CURRENT_USER, taskData.taskId, timeBlockResult.timeBlockId)
+    }
+
+    // Call update APIs for each changed field (excluding time-related fields)
+    await Promise.all([
+      TaskCatalogAPI.updateTaskName(CURRENT_USER, taskData.taskId, taskData.taskName),
+      TaskCatalogAPI.updateTaskCategory(CURRENT_USER, taskData.taskId, taskData.category),
+      TaskCatalogAPI.updateTaskDuration(CURRENT_USER, taskData.taskId, taskData.duration),
+      TaskCatalogAPI.updateTaskPriority(CURRENT_USER, taskData.taskId, taskData.priority),
+      TaskCatalogAPI.updateTaskSplittable(CURRENT_USER, taskData.taskId, taskData.splittable),
+      taskData.deadline ? TaskCatalogAPI.updateTaskDeadline(CURRENT_USER, taskData.taskId, taskData.deadline) : Promise.resolve(),
+      taskData.slack ? TaskCatalogAPI.updateTaskSlack(CURRENT_USER, taskData.taskId, taskData.slack) : Promise.resolve(),
+      taskData.notes ? TaskCatalogAPI.updateTaskNote(CURRENT_USER, taskData.taskId, taskData.notes) : Promise.resolve(),
+    ])
+
+    console.log('Task updated successfully')
+
+    // Reset edit mode
+    isEditMode.value = false
+    editingTask.value = null
+
+    // Refresh the schedule
+    await fetchScheduleData()
+
+    alert('Task updated successfully!')
+  } catch (error: any) {
+    console.error('Failed to update task:', error)
+    alert(`Failed to update task: ${error.message || 'Unknown error'}`)
   }
 }
 
@@ -668,16 +616,6 @@ onMounted(async () => {
     // Center the current time in the viewport
     timelineContainerRef.value.scrollTop = currentPos - 200
   }
-
-  // Add global mouse move and mouse up listeners for drag and drop
-  document.addEventListener('mousemove', onDrag)
-  document.addEventListener('mouseup', endDrag)
-})
-
-// Clean up event listeners on unmount
-onUnmounted(() => {
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', endDrag)
 })
 
 // Generate time markers for both full hours and half hours
@@ -861,26 +799,6 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
               :style="{ top: getCurrentTimePosition() + 'px' }"
             ></div>
 
-            <!-- Drag preview shadow box -->
-            <div
-              v-if="isDragging && draggedTask"
-              class="drag-preview-box"
-              :style="{
-                top: dragPreviewPosition.top + 'px',
-                height: dragPreviewPosition.height + 'px'
-              }"
-            >
-              <div class="preview-header">
-                <div class="preview-time">{{ dragPreviewTime.start }} - {{ dragPreviewTime.end }}</div>
-                <div class="preview-duration">{{ draggedTask.duration }} min</div>
-              </div>
-              <div class="preview-title">{{ draggedTask.title }}</div>
-              <div class="preview-meta">
-                <div class="preview-type">{{ draggedTask.category }}</div>
-                <div class="preview-badge">{{ draggedTask.priority }}</div>
-              </div>
-            </div>
-
             <div
               v-for="task in tasks"
               :key="task.id"
@@ -890,15 +808,14 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
                 {
                   active: task.active,
                   completed: task.completed,
-                  'glow-effect': task.active,
-                  'is-dragging': isDragging && draggedTask?.id === task.id
+                  'glow-effect': task.active
                 }
               ]"
               :style="{
                 top: getTaskPosition(task.timeStart) + 'px',
                 height: getTaskHeight(task.timeStart, task.timeEnd) + 'px'
               }"
-              @mousedown="startDrag($event, task)"
+              @click="handleTaskCardClick(task)"
               @mouseenter="setHoveredTask(task.id)"
               @mouseleave="setHoveredTask(null)"
             >
@@ -919,7 +836,7 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
               <button
                 v-if="hoveredTaskId === task.id"
                 class="task-delete-button"
-                @click="deleteTask(task)"
+                @click.stop="deleteTask(task)"
                 title="Remove from schedule"
               >
                 ×
@@ -936,8 +853,21 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
     <AddTaskModal
       :show="showAddTaskModal"
       :selected-hour="selectedHourForNewTask"
-      @close="showAddTaskModal = false"
+      :edit-mode="isEditMode"
+      :task-data="editingTask ? {
+        taskId: editingTask.taskId,
+        taskName: editingTask.taskName,
+        category: editingTask.category,
+        duration: editingTask.duration,
+        priority: editingTask.priority,
+        splittable: editingTask.splittable,
+        deadline: editingTask.deadline,
+        slack: editingTask.slack,
+        note: editingTask.note
+      } : undefined"
+      @close="showAddTaskModal = false; isEditMode = false; editingTask = null"
       @submit="handleTaskSubmit"
+      @update="handleTaskUpdate"
     />
   </div>
 </template>
