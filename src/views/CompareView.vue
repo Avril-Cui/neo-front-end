@@ -163,71 +163,83 @@
             </div>
           </div>
 
-          <!-- Comparison slots -->
-          <div
-            v-for="(comparison, index) in comparisons"
-            :key="index"
-            class="time-slot"
-            :class="{ 'major-mismatch': comparison.isMismatch }"
-            :style="{
-              top: getComparisonPosition(comparison.startTime || 0) + 'px',
-              height: getComparisonHeight(comparison) + 'px'
-            }"
-          >
-            <div class="task-comparison">
-              <!-- Perfect Match -->
-              <div v-if="comparison.isPerfectMatch" class="task-perfect-match">
+          <!-- Comparison slots - Perfect Match (full width) -->
+          <template v-for="(comparison, index) in comparisons" :key="`perfect-${index}`">
+            <div
+              v-if="comparison.isPerfectMatch"
+              class="perfect-match-slot"
+              :style="{
+                top: getComparisonPosition(comparison.startTime || 0) + 'px',
+                height: calculateHeightWithMin(comparison.startTime || 0, comparison.endTime || 0) + 'px'
+              }"
+            >
+              <div class="task-perfect-match">
                 <div class="task-title-inline">
                   {{ comparison.taskName }} <span class="inline-label perfect-match-label">PERFECT MATCH</span>
                 </div>
               </div>
-
-              <!-- Mismatch -->
-              <template v-else>
-                <div v-if="comparison.planned" class="planned-task" :class="{ 'short-task': isShortSession(comparison.planned.duration) }">
-                  <!-- Short task: only show task name with inline label -->
-                  <div class="task-title-inline" v-if="isShortSession(comparison.planned.duration)">
-                    {{ comparison.planned.taskName }} <span class="inline-label">PLANNED</span>
-                  </div>
-                  <!-- Regular task: show time, title, and metadata -->
-                  <template v-else>
-                    <div class="task-time">{{ comparison.planned.timeRange }}</div>
-                    <div class="task-title">{{ comparison.planned.taskName }}</div>
-                    <div class="task-meta">
-                      <span class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</span>
-                      <span v-if="comparison.planned.varianceText" class="variance-badge" :class="{ 'skipped': comparison.planned.varianceText === 'Skipped' }">
-                        {{ comparison.planned.varianceText }}
-                      </span>
-                    </div>
-                  </template>
-                </div>
-                <div v-else class="no-task">{{ comparison.noPlannedText || 'No planned task' }}</div>
-
-                <div v-if="comparison.mismatchIcon" class="mismatch-indicator">
-                  {{ comparison.mismatchIcon }}
-                </div>
-
-                <div v-if="comparison.actual" class="actual-task" :class="{ 'short-task': isShortSession(comparison.actual.duration) }">
-                  <!-- Short task: only show task name with inline label -->
-                  <div class="task-title-inline" v-if="isShortSession(comparison.actual.duration)">
-                    {{ comparison.actual.taskName }} <span class="inline-label">ACTUAL</span>
-                  </div>
-                  <!-- Regular task: show time, title, and metadata -->
-                  <template v-else>
-                    <div class="task-time">{{ comparison.actual.timeRange }}</div>
-                    <div class="task-title">{{ comparison.actual.taskName }}</div>
-                    <div class="task-meta">
-                      <span class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</span>
-                      <span v-if="comparison.actual.varianceText" class="variance-badge">
-                        {{ comparison.actual.varianceText }}
-                      </span>
-                    </div>
-                  </template>
-                </div>
-                <div v-else class="no-task">{{ comparison.noActualText || 'Task skipped' }}</div>
-              </template>
             </div>
-          </div>
+          </template>
+
+          <!-- Planned tasks (left side) -->
+          <template v-for="(comparison, index) in comparisons" :key="`planned-${index}`">
+            <div
+              v-if="comparison.planned"
+              class="planned-task-slot"
+              :style="{
+                top: getComparisonPosition(comparison.planned.startTime) + 'px',
+                height: calculateHeightWithMin(comparison.planned.startTime, comparison.planned.endTime) + 'px'
+              }"
+            >
+              <div class="planned-task" :class="{ 'short-task': isShortSession(comparison.planned.duration) }">
+                <!-- Short task: only show task name with inline label -->
+                <div class="task-title-inline" v-if="isShortSession(comparison.planned.duration)">
+                  {{ comparison.planned.taskName }} <span class="inline-label">PLANNED</span>
+                </div>
+                <!-- Regular task: show time, title, and metadata -->
+                <template v-else>
+                  <div class="task-time">{{ comparison.planned.timeRange }}</div>
+                  <div class="task-title">{{ comparison.planned.taskName }}</div>
+                  <div class="task-meta">
+                    <span class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</span>
+                    <span v-if="comparison.planned.varianceText" class="variance-badge" :class="{ 'skipped': comparison.planned.varianceText === 'Skipped' }">
+                      {{ comparison.planned.varianceText }}
+                    </span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Actual tasks (right side) -->
+          <template v-for="(comparison, index) in comparisons" :key="`actual-${index}`">
+            <div
+              v-if="comparison.actual"
+              class="actual-task-slot"
+              :style="{
+                top: getComparisonPosition(comparison.actual.startTime) + 'px',
+                height: calculateHeightWithMin(comparison.actual.startTime, comparison.actual.endTime) + 'px'
+              }"
+            >
+              <div class="actual-task" :class="{ 'short-task': isShortSession(comparison.actual.duration) }">
+                <!-- Short task: only show task name with inline label -->
+                <div class="task-title-inline" v-if="isShortSession(comparison.actual.duration)">
+                  {{ comparison.actual.taskName }} <span class="inline-label">ACTUAL</span>
+                </div>
+                <!-- Regular task: show time, title, and metadata -->
+                <template v-else>
+                  <div class="task-time">{{ comparison.actual.timeRange }}</div>
+                  <div class="task-title">{{ comparison.actual.taskName }}</div>
+                  <div class="task-meta">
+                    <span class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</span>
+                    <span v-if="comparison.actual.varianceText" class="variance-badge">
+                      {{ comparison.actual.varianceText }}
+                    </span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -494,6 +506,24 @@ const isShortSession = (durationStr: string | undefined): boolean => {
   return totalMinutes <= 30
 }
 
+// Helper to round timestamp to nearest 10 minutes
+const roundToNearest10Min = (timestamp: number): number => {
+  const date = new Date(timestamp)
+  const minutes = date.getMinutes()
+  const roundedMinutes = Math.round(minutes / 10) * 10
+  date.setMinutes(roundedMinutes)
+  date.setSeconds(0)
+  date.setMilliseconds(0)
+  return date.getTime()
+}
+
+// Helper to calculate height with minimum of 20 minutes
+const calculateHeightWithMin = (startTime: number, endTime: number): number => {
+  const actualHeight = getComparisonPosition(endTime) - getComparisonPosition(startTime)
+  const minHeight = (20 / 60) * HOUR_HEIGHT // 20 minutes in pixels
+  return Math.max(actualHeight, minHeight)
+}
+
 // Helper function to parse duration strings to pixel height
 const parseDurationToPixels = (durationStr: string): number => {
   // Handle formats like "1 hour", "30 minutes", "1h 30m", "1 hour 30 minutes"
@@ -535,7 +565,8 @@ interface Comparison {
   duration?: string
   category?: string
   varianceText?: string
-  startTime?: number  // For sorting
+  startTime?: number  // For sorting and positioning
+  endTime?: number    // For height calculation
   timeDeviationMs?: number  // Time deviation in milliseconds
   planned?: {
     timeRange: string
@@ -543,6 +574,8 @@ interface Comparison {
     duration: string
     category: string
     varianceText?: string
+    startTime: number  // Actual timestamp
+    endTime: number    // Actual timestamp
   }
   actual?: {
     timeRange: string
@@ -550,6 +583,8 @@ interface Comparison {
     duration: string
     category: string
     varianceText?: string
+    startTime: number  // Actual timestamp
+    endTime: number    // Actual timestamp
   }
   mismatchIcon?: string
   noPlannedText?: string
@@ -1046,9 +1081,12 @@ const fetchComparisons = async () => {
           // Perfect match case
           console.log(`Matched session ${matchingSession.sessionName} to task ${task.taskName}`)
           matchedSessions.add(matchingSession.sessionId)
+          const roundedStart = roundToNearest10Min(timeBlock.start)
+          const roundedEnd = roundToNearest10Min(timeBlock.end)
           processedComparisons.push({
             isPerfectMatch: true,
-            startTime: timeBlock.start,
+            startTime: roundedStart,
+            endTime: roundedEnd,
             timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
             taskName: task.taskName,
             duration: formatDuration(timeBlock.end - timeBlock.start),
@@ -1080,36 +1118,46 @@ const fetchComparisons = async () => {
 
             processedComparisons.push({
               isMismatch: true,
-              startTime: Math.min(timeBlock.start, sessionStart),
+              startTime: Math.min(roundToNearest10Min(timeBlock.start), roundToNearest10Min(sessionStart)),
+              endTime: Math.max(roundToNearest10Min(timeBlock.end), roundToNearest10Min(sessionEnd)),
               timeDeviationMs: Math.abs(timeDiff),
               planned: {
                 timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
                 taskName: task.taskName,
                 duration: formatDuration(plannedDuration),
-                category: task.category
+                category: task.category,
+                startTime: roundToNearest10Min(timeBlock.start),
+                endTime: roundToNearest10Min(timeBlock.end)
               },
               actual: {
                 timeRange: `${formatTime(sessionStart)} - ${formatTime(sessionEnd)}`,
                 taskName: task.taskName,
                 duration: formatDuration(actualDuration),
                 category: task.category,
-                varianceText
+                varianceText,
+                startTime: roundToNearest10Min(sessionStart),
+                endTime: roundToNearest10Min(sessionEnd)
               },
               mismatchIcon: '⚠️'
             })
           } else {
             // Planned but not logged - count the entire planned duration as deviation
             const plannedDuration = timeBlock.end - timeBlock.start
+            const roundedStart = roundToNearest10Min(timeBlock.start)
+            const roundedEnd = roundToNearest10Min(timeBlock.end)
             processedComparisons.push({
               isMismatch: true,
-              startTime: timeBlock.start,
+              startTime: roundedStart,
+              endTime: roundedEnd,
               timeDeviationMs: plannedDuration,
               planned: {
                 timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
                 taskName: task.taskName,
                 duration: formatDuration(plannedDuration),
                 category: task.category,
-                varianceText: 'Skipped'
+                varianceText: 'Skipped',
+                startTime: roundedStart,
+                endTime: roundedEnd
               },
               mismatchIcon: '✕',
               noActualText: 'No logged session, click to start logging'
@@ -1153,16 +1201,21 @@ const fetchComparisons = async () => {
           }
         }
 
+        const roundedStart = roundToNearest10Min(sessionStart)
+        const roundedEnd = roundToNearest10Min(sessionEnd)
         processedComparisons.push({
           isMismatch: true,
-          startTime: sessionStart,
+          startTime: roundedStart,
+          endTime: roundedEnd,
           timeDeviationMs: actualDuration, // Entire unplanned session duration counts as deviation
           actual: {
             timeRange: `${formatTime(sessionStart)} - ${formatTime(sessionEnd)}`,
             taskName: session.sessionName,
             duration: formatDuration(actualDuration),
             category: category || 'Ad-hoc',
-            varianceText: 'Unplanned'
+            varianceText: 'Unplanned',
+            startTime: roundedStart,
+            endTime: roundedEnd
           },
           mismatchIcon: '+',
           noPlannedText: 'No planned task'
@@ -1580,22 +1633,28 @@ onMounted(async () => {
   letter-spacing: 1px;
 }
 
-.time-slot {
+.perfect-match-slot {
   position: absolute;
   left: 100px;
   right: 0;
-  /* Remove min-height - let slots size based on task duration */
-  /* Remove border-left - no orange line for compare view */
-  padding: 0; /* No padding - let height be proportional to duration */
+  padding: 0;
   box-sizing: border-box;
 }
 
-.task-comparison {
-  position: relative;
-  display: flex;
-  gap: 12px;
-  height: 100%; /* Fill full height - no reduction for padding */
-  margin: 0; /* Remove any existing margin */
+.planned-task-slot {
+  position: absolute;
+  left: 100px;
+  width: calc((100% - 100px) / 2 - 2px); /* Half of remaining width minus half gap */
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.actual-task-slot {
+  position: absolute;
+  left: calc(100px + (100% - 100px) / 2 + 2px); /* Start at midpoint plus half gap */
+  right: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .planned-task,
