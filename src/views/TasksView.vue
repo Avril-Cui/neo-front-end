@@ -45,53 +45,132 @@
     </div>
 
     <div class="container">
-      <h1 class="page-title">Dropped Tasks</h1>
-      <p class="page-description">
-        These tasks couldn't be scheduled due to time constraints or conflicts.
-      </p>
+      <!-- All Tasks Section -->
+      <div class="section">
+        <h1 class="page-title">📋 All Tasks</h1>
+        <p class="page-description">
+          All your tasks across the system.
+        </p>
 
-      <div v-if="isLoading" class="loading-state">
-        <div class="spinner"></div>
-        <p>Loading dropped tasks...</p>
-      </div>
+        <div v-if="isLoadingTasks" class="loading-state">
+          <div class="spinner"></div>
+          <p>Loading tasks...</p>
+        </div>
 
-      <div v-else-if="droppedTasks.length === 0" class="empty-state">
-        <div class="empty-icon">✓</div>
-        <h2>No Dropped Tasks</h2>
-        <p>All tasks have been successfully scheduled.</p>
-      </div>
+        <div v-else-if="allTasks.length === 0" class="empty-state">
+          <div class="empty-icon">📝</div>
+          <h2>No Tasks Yet</h2>
+          <p>Create tasks from the Today view to get started.</p>
+        </div>
 
-      <div v-else class="tasks-list">
-        <div
-          v-for="droppedTask in droppedTasksWithDetails"
-          :key="droppedTask.taskId"
-          class="task-card"
-        >
-          <div class="task-header">
-            <div class="task-name">{{ droppedTask.task?.taskName || droppedTask.taskId }}</div>
-            <div class="task-priority" :class="`priority-${droppedTask.task?.priority || 3}`">
-              Priority {{ droppedTask.task?.priority || '?' }}
+        <div v-else class="tasks-grid">
+          <div
+            v-for="task in allTasks"
+            :key="task.taskId"
+            class="task-card all-task"
+          >
+            <button
+              class="delete-task-button"
+              @click="deleteTask(task, $event)"
+              title="Delete task"
+            >
+              ×
+            </button>
+            <div class="task-header">
+              <div class="task-name">{{ task.taskName }}</div>
+              <div class="task-priority" :class="`priority-${task.priority}`">
+                Priority {{ task.priority }}
+              </div>
+            </div>
+
+            <div class="task-details">
+              <div class="detail-row">
+                <span class="detail-label">📁 Category:</span>
+                <span class="detail-value category-badge">{{ task.category }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">⏱️ Duration:</span>
+                <span class="detail-value">{{ task.duration }} min</span>
+              </div>
+              <div v-if="task.deadline" class="detail-row">
+                <span class="detail-label">📅 Deadline:</span>
+                <span class="detail-value">{{ formatDate(task.deadline) }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">✂️ Splittable:</span>
+                <span class="detail-value">{{ task.splittable ? 'Yes' : 'No' }}</span>
+              </div>
+            </div>
+
+            <div v-if="task.note" class="task-note">
+              <span class="note-label">📝 Note:</span>
+              <span class="note-text">{{ task.note }}</span>
+            </div>
+
+            <div class="task-stats">
+              <div class="stat-item">
+                <span class="stat-value">{{ task.timeBlockSet.length }}</span>
+                <span class="stat-label">Schedules</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-value">{{ task.preDependence?.length || 0 }}</span>
+                <span class="stat-label">Dependencies</span>
+              </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div v-if="droppedTask.task" class="task-details">
-            <div class="detail-row">
-              <span class="detail-label">Category:</span>
-              <span class="detail-value">{{ droppedTask.task.category }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Duration:</span>
-              <span class="detail-value">{{ droppedTask.task.duration }} minutes</span>
-            </div>
-            <div v-if="droppedTask.task.deadline" class="detail-row">
-              <span class="detail-label">Deadline:</span>
-              <span class="detail-value">{{ formatDate(droppedTask.task.deadline) }}</span>
-            </div>
-          </div>
+      <!-- Dropped Tasks Section -->
+      <div class="section">
+        <h1 class="page-title">⚠️ Dropped Tasks</h1>
+        <p class="page-description">
+          These tasks couldn't be scheduled due to time constraints or conflicts.
+        </p>
 
-          <div class="task-reason">
-            <span class="reason-label">Reason:</span>
-            <span class="reason-text">{{ droppedTask.reason }}</span>
+        <div v-if="isLoadingDropped" class="loading-state">
+          <div class="spinner"></div>
+          <p>Loading dropped tasks...</p>
+        </div>
+
+        <div v-else-if="droppedTasks.length === 0" class="empty-state">
+          <div class="empty-icon">✓</div>
+          <h2>No Dropped Tasks</h2>
+          <p>All tasks have been successfully scheduled.</p>
+        </div>
+
+        <div v-else class="tasks-list">
+          <div
+            v-for="droppedTask in droppedTasksWithDetails"
+            :key="droppedTask.taskId"
+            class="task-card"
+          >
+            <div class="task-header">
+              <div class="task-name">{{ droppedTask.task?.taskName || droppedTask.taskId }}</div>
+              <div class="task-priority" :class="`priority-${droppedTask.task?.priority || 3}`">
+                Priority {{ droppedTask.task?.priority || '?' }}
+              </div>
+            </div>
+
+            <div v-if="droppedTask.task" class="task-details">
+              <div class="detail-row">
+                <span class="detail-label">Category:</span>
+                <span class="detail-value">{{ droppedTask.task.category }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Duration:</span>
+                <span class="detail-value">{{ droppedTask.task.duration }} minutes</span>
+              </div>
+              <div v-if="droppedTask.task.deadline" class="detail-row">
+                <span class="detail-label">Deadline:</span>
+                <span class="detail-value">{{ formatDate(droppedTask.task.deadline) }}</span>
+              </div>
+            </div>
+
+            <div class="task-reason">
+              <span class="reason-label">Reason:</span>
+              <span class="reason-text">{{ droppedTask.reason }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -117,7 +196,12 @@ const handleLogout = () => {
   }
 }
 
-const isLoading = ref(true)
+// All tasks state
+const allTasks = ref<Task[]>([])
+const isLoadingTasks = ref(true)
+
+// Dropped tasks state
+const isLoadingDropped = ref(true)
 const droppedTasks = ref<DroppedTask[]>([])
 
 interface DroppedTaskWithDetails {
@@ -158,10 +242,24 @@ const formatDate = (dateStr: string) => {
   })
 }
 
+// Fetch all tasks
+const fetchAllTasks = async () => {
+  try {
+    isLoadingTasks.value = true
+    const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+    allTasks.value = tasks
+  } catch (error: any) {
+    console.error('Failed to fetch all tasks:', error)
+    allTasks.value = []
+  } finally {
+    isLoadingTasks.value = false
+  }
+}
+
 // Fetch dropped tasks
 const fetchDroppedTasks = async () => {
   try {
-    isLoading.value = true
+    isLoadingDropped.value = true
     const tasks = await AdaptiveScheduleAPI.getDroppedTasks(CURRENT_USER)
     droppedTasks.value = tasks
 
@@ -188,11 +286,26 @@ const fetchDroppedTasks = async () => {
     droppedTasks.value = []
     droppedTasksWithDetails.value = []
   } finally {
-    isLoading.value = false
+    isLoadingDropped.value = false
+  }
+}
+
+// Delete task
+const deleteTask = async (task: Task, event: MouseEvent) => {
+  event.stopPropagation()
+  if (!confirm(`Are you sure you want to delete "${task.taskName}"?`)) return
+
+  try {
+    await TaskCatalogAPI.deleteTask(CURRENT_USER, task.taskId)
+    await fetchAllTasks()
+  } catch (error: any) {
+    console.error('Failed to delete task:', error)
+    alert('Failed to delete task: ' + error.message)
   }
 }
 
 onMounted(() => {
+  fetchAllTasks()
   fetchDroppedTasks()
 })
 </script>
@@ -305,9 +418,13 @@ onMounted(() => {
 }
 
 .container {
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 40px 20px;
+}
+
+.section {
+  margin-bottom: 60px;
 }
 
 .page-title {
@@ -321,6 +438,125 @@ onMounted(() => {
   font-size: 16px;
   color: #AAA;
   margin-bottom: 32px;
+}
+
+.tasks-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 24px;
+}
+
+@media (min-width: 1024px) {
+  .tasks-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.task-card.all-task {
+  background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
+  border-radius: 12px;
+  padding: 20px;
+  border: 2px solid rgba(255, 111, 97, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.task-card.all-task:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(255, 111, 97, 0.2);
+  border-color: rgba(255, 111, 97, 0.5);
+}
+
+.delete-task-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  color: #FF4444;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+}
+
+.task-card.all-task:hover .delete-task-button {
+  opacity: 1;
+}
+
+.delete-task-button:hover {
+  background: rgba(255, 68, 68, 0.3);
+  border-color: rgba(255, 68, 68, 0.5);
+  transform: scale(1.1);
+}
+
+.category-badge {
+  background: rgba(255, 111, 97, 0.2);
+  color: #FF6F61;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 111, 97, 0.3);
+}
+
+.task-note {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border-left: 3px solid rgba(255, 111, 97, 0.5);
+  font-size: 14px;
+}
+
+.note-label {
+  font-weight: 600;
+  color: #AAA;
+  margin-right: 8px;
+}
+
+.note-text {
+  color: #F5E8D8;
+  line-height: 1.5;
+}
+
+.task-stats {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(245, 232, 216, 0.1);
+  display: flex;
+  gap: 24px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #FF6F61;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #AAA;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .loading-state,

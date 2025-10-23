@@ -177,10 +177,8 @@
             <div class="task-comparison">
               <!-- Perfect Match -->
               <div v-if="comparison.isPerfectMatch" class="task-perfect-match">
-                <div class="task-time">{{ comparison.timeRange }}</div>
-                <div class="task-title">{{ comparison.taskName }}</div>
-                <div v-if="!isShortSession(comparison.duration)" class="task-meta">
-                  <span class="task-duration">{{ comparison.duration }} • {{ comparison.category }}</span>
+                <div class="task-title-inline">
+                  {{ comparison.taskName }} <span class="inline-label perfect-match-label">PERFECT MATCH</span>
                 </div>
               </div>
 
@@ -444,18 +442,19 @@ const getComparisonHeight = (comparison: Comparison) => {
     // Parse duration string like "1 hour", "30 minutes", "1h 30m"
     const durationStr = comparison.duration || comparison.planned?.duration || '1 hour'
     const baseHeight = parseDurationToPixels(durationStr)
-    // Add padding for visual spacing between task clusters
-    return baseHeight + 16 // 8px top + 8px bottom padding
+    // Return exact proportional height without extra padding
+    return baseHeight
   }
-  // Default to 1 hour + padding if no duration available
-  return HOUR_HEIGHT + 16
+  // Default to 1 hour if no duration available
+  return HOUR_HEIGHT
 }
 
 // Calculate height for an adaptive block
 const getAdaptiveBlockHeight = (block: AdaptiveBlock) => {
   const durationMs = block.end - block.start
   const durationMinutes = durationMs / (1000 * 60)
-  return (durationMinutes / 60) * HOUR_HEIGHT + 16 // Add padding
+  // Return exact proportional height without extra padding
+  return (durationMinutes / 60) * HOUR_HEIGHT
 }
 
 // Helper function to parse duration strings to minutes
@@ -1587,7 +1586,7 @@ onMounted(async () => {
   right: 0;
   /* Remove min-height - let slots size based on task duration */
   /* Remove border-left - no orange line for compare view */
-  padding: 8px 0; /* Add vertical padding for spacing between task clusters */
+  padding: 0; /* No padding - let height be proportional to duration */
   box-sizing: border-box;
 }
 
@@ -1595,7 +1594,7 @@ onMounted(async () => {
   position: relative;
   display: flex;
   gap: 12px;
-  height: calc(100% - 16px); /* Account for time-slot padding (8px top + 8px bottom) */
+  height: 100%; /* Fill full height - no reduction for padding */
   margin: 0; /* Remove any existing margin */
 }
 
@@ -1612,7 +1611,7 @@ onMounted(async () => {
   position: relative;
   height: 100%; /* Fill the full height of task-comparison */
   box-sizing: border-box; /* Include padding in height calculation */
-  margin: 2px 0; /* Add subtle vertical margin for visual separation */
+  margin: 0; /* No margin - height is exactly proportional to duration */
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1701,6 +1700,12 @@ onMounted(async () => {
   border: 1px solid rgba(255, 111, 97, 0.3);
 }
 
+.perfect-match-label {
+  background: #1A2A1A;
+  color: #4CAF50;
+  border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
 .task-perfect-match {
   flex: 1;
   background: linear-gradient(135deg, #1A2A1A 0%, #2A3A2A 100%);
@@ -1710,7 +1715,7 @@ onMounted(async () => {
   position: relative;
   height: 100%; /* Fill the full height of task-comparison */
   box-sizing: border-box; /* Include padding in height calculation */
-  margin: 2px 0; /* Add subtle vertical margin for visual separation */
+  margin: 0; /* No margin - height is exactly proportional to duration */
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1745,14 +1750,14 @@ onMounted(async () => {
   left: 100px;
   width: calc(50% - 46px); /* Match planned task width: 50% minus half the gap (12px/2 = 6px) */
   transition: all 0.2s ease;
-  padding: 8px 0; /* Match time-slot padding */
+  padding: 0; /* No padding - match time-slot */
   box-sizing: border-box;
 }
 
 .empty-slot-panel {
   position: relative;
   width: 100%;
-  height: calc(100% - 16px); /* Account for padding like task-comparison */
+  height: 100%; /* Fill full height */
   background: transparent;
   border: 2px dashed rgba(245, 232, 216, 0.15);
   border-radius: 12px;
@@ -1762,7 +1767,7 @@ onMounted(async () => {
   cursor: pointer;
   transition: all 0.3s ease;
   opacity: 0;
-  margin: 2px 0; /* Match task component margins */
+  margin: 0; /* No margin */
 }
 
 .empty-time-slot:hover .empty-slot-panel {
@@ -1965,7 +1970,7 @@ onMounted(async () => {
   position: absolute;
   left: calc(50% + 6px); /* Right half of the timeline, accounting for gap */
   right: 0;
-  padding: 8px 0;
+  padding: 0; /* No padding - height proportional to duration */
   box-sizing: border-box;
 }
 
@@ -2003,8 +2008,8 @@ onMounted(async () => {
   border: 2px solid #DAA520;
   border-radius: 8px;
   padding: 8px 10px;
-  margin-bottom: 8px;
-  height: calc(100% - 16px);
+  margin: 0;
+  height: 100%; /* Fill full height - proportional to duration */
   box-sizing: border-box;
   cursor: pointer;
   transition: all 0.3s ease;
