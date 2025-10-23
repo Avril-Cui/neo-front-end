@@ -1113,7 +1113,12 @@ const fetchComparisons = async () => {
             } else if (timeDiff > 0) {
               varianceText = `+${formatDuration(timeDiff)} overtime`
             } else {
-              varianceText = `-${formatDuration(Math.abs(timeDiff))} under`
+              // If task was finished and completed early, show "faster"
+              if (sessionForTask.isDone) {
+                varianceText = `${formatDuration(Math.abs(timeDiff))} faster`
+              } else {
+                varianceText = `-${formatDuration(Math.abs(timeDiff))} under`
+              }
             }
 
             processedComparisons.push({

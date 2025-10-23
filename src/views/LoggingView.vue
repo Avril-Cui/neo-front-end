@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { TaskCatalogAPI, RoutineLogAPI, ScheduleTimeAPI, type Task, type Session } from '../services/api'
 import { useAuthStore } from '../stores/auth'
+import { getCurrentDate } from '../utils/time'
 
 // Router
 const router = useRouter()
@@ -33,7 +34,6 @@ const durationValue = ref(1) // hours
 const isSplitActive = ref(true)
 const showNewSessionForm = ref(false)
 const showPauseModal = ref(false)
-const showTaskDropdown = ref(false)
 const showTaskSuggestions = ref(false)
 const selectedPauseReason = ref('')
 
@@ -47,9 +47,9 @@ const selectedTaskId = ref<string | null>(null)
 
 // New session form
 const newSessionName = ref('')
-const newSessionCategory = ref('work')
-const newSessionType = ref('planned')
-const isCustomSession = ref(false)
+
+// Created sessions (sessions created via the form)
+const createdSessions = ref<Array<{ sessionId: string; sessionName: string }>>([])
 
 // Active view
 const activeView = ref('Logging')
@@ -98,32 +98,37 @@ const startTimer = async () => {
       return
     }
 
-    console.log('Creating session:', {
-      owner: CURRENT_USER,
-      sessionName: currentSessionName.value,
-      linkedTaskId: selectedTaskId.value
-    })
+    // If we don't already have a session ID, create one
+    if (!currentSessionId.value) {
+      console.log('Creating session:', {
+        owner: CURRENT_USER,
+        sessionName: currentSessionName.value,
+        linkedTaskId: selectedTaskId.value
+      })
 
-    // 1. Create the session
-    const createParams: any = {
-      owner: CURRENT_USER,
-      sessionName: currentSessionName.value
+      // 1. Create the session
+      const createParams: any = {
+        owner: CURRENT_USER,
+        sessionName: currentSessionName.value
+      }
+
+      // Only add linkedTaskId if a task was selected
+      if (selectedTaskId.value) {
+        createParams.linkedTaskId = selectedTaskId.value
+      }
+
+      const createResult = await RoutineLogAPI.createSession(createParams)
+      currentSessionId.value = createResult.session
+
+      console.log('Session created:', createResult.session)
+    } else {
+      console.log('Using existing session:', currentSessionId.value)
     }
-
-    // Only add linkedTaskId if a task was selected
-    if (selectedTaskId.value) {
-      createParams.linkedTaskId = selectedTaskId.value
-    }
-
-    const createResult = await RoutineLogAPI.createSession(createParams)
-    currentSessionId.value = createResult.session
-
-    console.log('Session created:', createResult.session)
 
     // 2. Start the session
-    await RoutineLogAPI.startSession(CURRENT_USER, createResult.session)
+    await RoutineLogAPI.startSession(CURRENT_USER, { _id: currentSessionId.value })
 
-    console.log('Session started:', createResult.session)
+    console.log('Session started:', currentSessionId.value)
 
     // 3. Start the local timer
     isRunning.value = true
@@ -141,10 +146,13 @@ const startTimer = async () => {
 
 const stopTimer = async () => {
   try {
+    // Ask user if they finished the task
+    const isDone = confirm('Did you finish the task?')
+
     // End the session in the backend if we have a session ID
     if (currentSessionId.value) {
-      await RoutineLogAPI.endSession(CURRENT_USER, currentSessionId.value)
-      console.log('Session ended:', currentSessionId.value)
+      await RoutineLogAPI.endSession(CURRENT_USER, { _id: currentSessionId.value }, isDone)
+      console.log('Session ended:', currentSessionId.value, 'isDone:', isDone)
     }
 
     isRunning.value = false
@@ -154,7 +162,8 @@ const stopTimer = async () => {
       timerInterval = null
     }
 
-    alert(`Session completed! Time: ${formatTime(elapsedTime.value)}`)
+    const statusText = isDone ? 'finished' : 'incomplete'
+    alert(`Session completed (${statusText})! Time: ${formatTime(elapsedTime.value)}`)
 
     // Reset session tracking
     currentSessionId.value = null
@@ -253,34 +262,40 @@ const toggleNewSession = () => {
   showNewSessionForm.value = !showNewSessionForm.value
 }
 
-const toggleTaskDropdown = () => {
-  showTaskDropdown.value = !showTaskDropdown.value
-}
-
-const selectExistingTask = (name: string, category: string, type: string) => {
-  newSessionName.value = name
-  newSessionCategory.value = category
-  newSessionType.value = type
-  isCustomSession.value = false
-  showTaskDropdown.value = false
-}
-
-const enableCustomSession = () => {
-  newSessionName.value = ''
-  isCustomSession.value = true
-  showTaskDropdown.value = false
-}
-
-const createNewSession = () => {
+const createNewSession = async () => {
   if (!newSessionName.value.trim()) {
     alert('Please enter a session name')
     return
   }
 
-  taskInput.value = newSessionName.value
-  currentSessionName.value = newSessionName.value
-  showNewSessionForm.value = false
-  newSessionName.value = ''
+  try {
+    // Create session in backend without linkedTaskId
+    const response = await RoutineLogAPI.createSession({
+      owner: CURRENT_USER,
+      sessionName: newSessionName.value.trim()
+    })
+
+    console.log('Created session:', response)
+
+    // Store the created session
+    createdSessions.value.push({
+      sessionId: response.session,
+      sessionName: newSessionName.value.trim()
+    })
+
+    // Set it as the current session name
+    taskInput.value = newSessionName.value.trim()
+    currentSessionName.value = newSessionName.value.trim()
+
+    // Close form and clear input
+    showNewSessionForm.value = false
+    newSessionName.value = ''
+
+    alert(`Session "${currentSessionName.value}" created! Click Start to begin.`)
+  } catch (error: any) {
+    console.error('Failed to create session:', error)
+    alert(`Failed to create session: ${error.message || 'Unknown error'}`)
+  }
 }
 
 const cancelNewSession = () => {
@@ -333,6 +348,16 @@ const selectTaskFromSuggestions = (task: Task) => {
   plannedDuration.value = task.duration
   durationValue.value = Math.ceil(task.duration / 60)
   selectedTaskId.value = task.taskId  // Save the task ID for session creation
+  showTaskSuggestions.value = false
+}
+
+// Select a created session
+const selectCreatedSession = (session: { sessionId: string; sessionName: string }) => {
+  taskInput.value = session.sessionName
+  currentSessionName.value = session.sessionName
+  // For ad-hoc sessions, we can use the existing session ID
+  currentSessionId.value = session.sessionId
+  selectedTaskId.value = null  // No linked task
   showTaskSuggestions.value = false
 }
 
@@ -389,6 +414,8 @@ interface SessionLog {
   deviation?: string
   deviationType?: string
   active: boolean
+  isDone?: boolean
+  timeSaved?: string
 }
 
 const sessionLogs = ref<SessionLog[]>([])
@@ -510,17 +537,38 @@ const resumeActiveSession = async (sessionLog: SessionLog) => {
 }
 
 // Fetch and process user sessions
+// Helper to check if a timestamp is today
+const isToday = (timestamp: string | number): boolean => {
+  const date = new Date(timestamp)
+  const today = getCurrentDate()
+  return date.getFullYear() === today.getFullYear() &&
+         date.getMonth() === today.getMonth() &&
+         date.getDate() === today.getDate()
+}
+
 const fetchUserSessions = async () => {
   try {
     isLoadingSessions.value = true
-    const sessions = await RoutineLogAPI.getUserSessions(CURRENT_USER)
+    const allSessions = await RoutineLogAPI.getUserSessions(CURRENT_USER)
 
     // Check if sessions is an array (successful response)
-    if (!Array.isArray(sessions)) {
+    if (!Array.isArray(allSessions)) {
       console.log('No sessions found or invalid response')
       sessionLogs.value = []
       return
     }
+
+    // Filter sessions to only show those from today
+    const sessions = allSessions.filter(session => {
+      // Only show sessions that started today
+      if (session.start) {
+        return isToday(session.start)
+      }
+      // For sessions without a start time (not yet started), show them
+      return true
+    })
+
+    console.log(`Filtered ${sessions.length} sessions for today from ${allSessions.length} total sessions`)
 
     // Process each session to build the session log data
     const logs: SessionLog[] = []
@@ -531,6 +579,7 @@ const fetchUserSessions = async () => {
         name: session.sessionName,
         type: session.linkedTaskId ? 'Planned' : 'Ad-hoc',
         active: session.isActive,
+        isDone: session.isDone,
         time: '',
         duration: undefined,
         category: undefined,
@@ -539,7 +588,8 @@ const fetchUserSessions = async () => {
         remaining: undefined,
         status: undefined,
         deviation: undefined,
-        deviationType: undefined
+        deviationType: undefined,
+        timeSaved: undefined
       }
 
       // Fetch linked task if exists
@@ -580,7 +630,13 @@ const fetchUserSessions = async () => {
                 log.deviation = `+${formatDuration(deviationMs)} overtime`
                 log.deviationType = 'negative'
               } else {
-                log.deviation = `-${formatDuration(Math.abs(deviationMs))} under`
+                // If task was finished and completed early, show "faster"
+                if (session.isDone) {
+                  log.deviation = `${formatDuration(Math.abs(deviationMs))} faster`
+                  log.timeSaved = formatDuration(Math.abs(deviationMs))
+                } else {
+                  log.deviation = `-${formatDuration(Math.abs(deviationMs))} under`
+                }
                 log.deviationType = 'positive'
               }
             }
@@ -689,104 +745,69 @@ onUnmounted(() => {
               <div class="suggestion-name">Loading tasks...</div>
             </div>
           </div>
-          <div v-else-if="userTasks.length === 0" class="suggestion-item">
-            <div class="suggestion-main">
-              <div class="suggestion-name">No tasks found</div>
-              <div class="suggestion-details">Create a task in the Today view first</div>
+          <template v-else>
+            <!-- Created Sessions Section -->
+            <div v-if="createdSessions.length > 0">
+              <div class="suggestions-section-header">Created Sessions</div>
+              <div
+                v-for="session in createdSessions"
+                :key="session.sessionId"
+                class="suggestion-item"
+                @mousedown="selectCreatedSession(session)"
+              >
+                <div class="suggestion-main">
+                  <div class="suggestion-name">{{ session.sessionName }}</div>
+                  <div class="suggestion-details">Ad-hoc session</div>
+                </div>
+                <div class="suggestion-badge session-badge">Session</div>
+              </div>
+              <div class="suggestions-divider"></div>
             </div>
-          </div>
-          <div
-            v-else
-            v-for="task in userTasks"
-            :key="task.taskId"
-            class="suggestion-item"
-            @mousedown="selectTaskFromSuggestions(task)"
-          >
-            <div class="suggestion-main">
-              <div class="suggestion-name">{{ task.taskName }}</div>
-              <div class="suggestion-details">
-                {{ task.category }} • {{ task.duration }} min
-                <span v-if="task.deadline"> • Due: {{ new Date(task.deadline).toLocaleDateString() }}</span>
+
+            <!-- Planned Tasks Section -->
+            <div v-if="userTasks.length === 0 && createdSessions.length === 0" class="suggestion-item">
+              <div class="suggestion-main">
+                <div class="suggestion-name">No tasks or sessions</div>
+                <div class="suggestion-details">Create a task in Today view or create a session below</div>
               </div>
             </div>
-            <div class="suggestion-badge">{{ getPriorityLabel(task.priority) }}</div>
-          </div>
+            <template v-else>
+              <div v-if="userTasks.length > 0" class="suggestions-section-header">Planned Tasks</div>
+              <div
+                v-for="task in userTasks"
+                :key="task.taskId"
+                class="suggestion-item"
+                @mousedown="selectTaskFromSuggestions(task)"
+              >
+                <div class="suggestion-main">
+                  <div class="suggestion-name">{{ task.taskName }}</div>
+                  <div class="suggestion-details">
+                    {{ task.category }} • {{ task.duration }} min
+                    <span v-if="task.deadline"> • Due: {{ new Date(task.deadline).toLocaleDateString() }}</span>
+                  </div>
+                </div>
+                <div class="suggestion-badge">{{ getPriorityLabel(task.priority) }}</div>
+              </div>
+            </template>
+          </template>
         </div>
 
         <button class="new-session-toggle" @click="toggleNewSession">+ Create new session</button>
         <div class="new-session-form" :class="{ active: showNewSessionForm }">
           <div class="form-row">
             <div class="form-field" style="grid-column: 1 / -1">
-              <label class="form-label">Session</label>
-              <div class="session-input-wrapper">
-                <input
-                  type="text"
-                  class="form-input session-input"
-                  v-model="newSessionName"
-                  :placeholder="
-                    isCustomSession
-                      ? 'Enter custom session name'
-                      : 'Choose existing task or enter new session'
-                  "
-                  :readonly="!isCustomSession"
-                  @click="!isCustomSession && toggleTaskDropdown()"
-                />
-                <div class="task-options-dropdown" :class="{ active: showTaskDropdown }">
-                  <div class="task-option-section">
-                    <div class="task-option-header">Existing Tasks</div>
-                    <div
-                      v-for="task in existingTasks"
-                      :key="task.name"
-                      class="task-option-item"
-                      @click="selectExistingTask(task.name, task.category, task.type)"
-                    >
-                      <div class="task-option-main">
-                        <div class="task-option-name">{{ task.name }}</div>
-                        <div class="task-option-meta">
-                          {{ task.categoryLabel }} • {{ task.type }}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="task-option-divider"></div>
-                  <div class="task-option-item custom-task" @click="enableCustomSession">
-                    <div class="task-option-main">
-                      <div class="task-option-name">✏️ Enter custom session</div>
-                      <div class="task-option-meta">Create new session manually</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-field">
-              <label class="form-label">Category</label>
-              <select class="form-select" v-model="newSessionCategory" :disabled="!isCustomSession">
-                <option value="work">Work</option>
-                <option value="personal">Personal</option>
-                <option value="health">Health & Fitness</option>
-                <option value="education">Education</option>
-                <option value="creative">Creative</option>
-                <option value="life">Life Admin</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label class="form-label">Session Type</label>
-              <select class="form-select" v-model="newSessionType" :disabled="!isCustomSession">
-                <option value="planned">Planned Task</option>
-                <option value="adhoc">Ad-hoc Work</option>
-                <option value="forgotten">Forgotten Task</option>
-                <option value="urgent">Urgent Priority</option>
-                <option value="learning">Learning Session</option>
-                <option value="break">Break/Rest</option>
-                <option value="maintenance">Maintenance Work</option>
-                <option value="creative">Creative Flow</option>
-              </select>
+              <label class="form-label">Session Name</label>
+              <textarea
+                class="form-textarea session-name-input"
+                v-model="newSessionName"
+                placeholder="Enter session name (e.g., Deep work on project report, Morning workout, Team meeting prep)"
+                rows="3"
+                @keydown.enter.prevent="createNewSession"
+              ></textarea>
             </div>
           </div>
           <div class="form-actions">
-            <button class="form-btn primary" @click="createNewSession">Create</button>
+            <button class="form-btn primary" @click="createNewSession">Create Session</button>
             <button class="form-btn secondary" @click="cancelNewSession">Cancel</button>
           </div>
         </div>
@@ -858,6 +879,11 @@ onUnmounted(() => {
                 <div class="session-meta">
                   <span v-if="log.category" class="session-category">{{ log.category }}</span>
                   <span class="session-type">{{ log.type }}</span>
+                  <span v-if="!log.active && log.isDone !== undefined"
+                        class="session-completion"
+                        :class="{ finished: log.isDone, incomplete: !log.isDone }">
+                    {{ log.isDone ? 'Finished' : 'Incomplete' }}
+                  </span>
                   <span>{{ log.time }}</span>
                 </div>
               </div>
@@ -1172,6 +1198,28 @@ onUnmounted(() => {
   background: rgba(255, 111, 97, 0.15);
 }
 
+.suggestions-section-header {
+  padding: 12px 20px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #ff6f61;
+  border-bottom: 1px solid rgba(255, 111, 97, 0.2);
+  background: rgba(255, 111, 97, 0.05);
+}
+
+.suggestions-divider {
+  height: 1px;
+  background: rgba(245, 232, 216, 0.1);
+  margin: 8px 0;
+}
+
+.session-badge {
+  background: rgba(147, 112, 219, 0.2);
+  color: #9370db;
+}
+
 .new-session-form {
   background: rgba(42, 42, 42, 0.95);
   border: 1px solid #444;
@@ -1309,6 +1357,30 @@ onUnmounted(() => {
 
 .form-input:focus {
   border-color: #ff6f61;
+}
+
+.form-textarea {
+  padding: 12px;
+  background: transparent;
+  border: 1px solid rgba(245, 232, 216, 0.2);
+  border-radius: 8px;
+  color: #f5e8d8;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  resize: vertical;
+  width: 100%;
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+.form-textarea:focus {
+  border-color: #ff6f61;
+}
+
+.form-textarea::placeholder {
+  color: rgba(245, 232, 216, 0.4);
 }
 
 .form-select {
@@ -1753,6 +1825,23 @@ onUnmounted(() => {
   padding: 2px 8px;
   border-radius: 4px;
   font-weight: 500;
+}
+
+.session-completion {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.session-completion.finished {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.session-completion.incomplete {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
 }
 
 .session-duration {

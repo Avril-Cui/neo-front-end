@@ -85,6 +85,15 @@ const isToday = () => {
   return currentDate.value.toDateString() === today.toDateString()
 }
 
+// Helper to check if a timestamp is on the selected date
+const isOnSelectedDate = (timestamp: number): boolean => {
+  const date = new Date(timestamp)
+  const selected = currentDate.value
+  return date.getFullYear() === selected.getFullYear() &&
+         date.getMonth() === selected.getMonth() &&
+         date.getDate() === selected.getDate()
+}
+
 // Navigation functions
 const navigateToToday = () => {
   router.push('/')
@@ -156,8 +165,12 @@ const fetchScheduleData = async () => {
     }
 
     // Get user's schedule to get time block details
-    const schedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
-    console.log('📋 Received schedules:', schedules.length, 'time blocks')
+    const allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    console.log('📋 Received schedules:', allSchedules.length, 'time blocks total')
+
+    // Filter schedules to only show those on the selected date
+    const schedules = allSchedules.filter(block => isOnSelectedDate(block.start))
+    console.log('📋 Filtered to', schedules.length, 'time blocks on selected date')
     console.log('📋 Schedule data:', JSON.stringify(schedules, null, 2))
 
     // Create a map of time blocks by ID for quick lookup
@@ -522,13 +535,13 @@ const handleTaskSubmit = async (taskData: any) => {
   try {
     console.log('Creating new task:', taskData)
 
-    // Convert start and end time to Unix timestamps
-    const today = getCurrentDate()
+    // Convert start and end time to Unix timestamps using the SELECTED date
+    const selectedDay = currentDate.value
     const [startHour, startMinute] = taskData.startTime.split(':')
     const [endHour, endMinute] = taskData.endTime.split(':')
 
-    const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(startHour), parseInt(startMinute))
-    const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), parseInt(endHour), parseInt(endMinute))
+    const startDate = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), parseInt(startHour), parseInt(startMinute))
+    const endDate = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), parseInt(endHour), parseInt(endMinute))
 
     const startTimestamp = startDate.getTime()
     const endTimestamp = endDate.getTime()

@@ -181,6 +181,7 @@ export interface Session {
   sessionId: string
   isPaused: boolean
   isActive: boolean
+  isDone: boolean
   start?: string
   end?: string
   linkedTaskId?: string
@@ -210,8 +211,8 @@ export const RoutineLogAPI = {
     return apiCall<void>('/api/RoutineLog/startSession', { owner, session })
   },
 
-  async endSession(owner: string, session: any): Promise<void> {
-    return apiCall<void>('/api/RoutineLog/endSession', { owner, session })
+  async endSession(owner: string, session: any, isDone: boolean): Promise<void> {
+    return apiCall<void>('/api/RoutineLog/endSession', { owner, session, isDone })
   },
 
   async interruptSession(owner: string, session: any, interruptReason: string): Promise<void> {
