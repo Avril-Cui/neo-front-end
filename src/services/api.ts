@@ -353,17 +353,20 @@ export const AdaptiveScheduleAPI = {
   async requestAdaptiveScheduleAI(owner: string, contextedPrompt: string): Promise<{
     adaptiveBlockTable: AdaptiveBlock[]
     droppedTaskSet: DroppedTask[]
+    analysis: string
   }> {
     const response = await apiCall<{
       adaptiveBlockTable: AdaptiveBlockResponse[]
       droppedTaskSet: DroppedTask[]
+      analysis: string
     }>('/api/AdaptiveSchedule/requestAdaptiveScheduleAI', {
       owner,
       contexted_prompt: contextedPrompt
     })
     return {
       adaptiveBlockTable: response.adaptiveBlockTable.map(mapAdaptiveBlockResponse),
-      droppedTaskSet: response.droppedTaskSet
+      droppedTaskSet: response.droppedTaskSet,
+      analysis: response.analysis
     }
   },
 

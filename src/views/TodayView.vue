@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AddTaskModal from '../components/AddTaskModal.vue'
 import { ScheduleTimeAPI, TaskCatalogAPI, type Task, type TimeBlock } from '../services/api'
@@ -668,6 +668,118 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
   const endPos = getTaskPosition(timeEnd)
   return endPos - startPos
 }
+
+// Interface for task layout with positioning info
+interface TaskLayout extends DisplayTask {
+  layoutWidth: number  // Width as percentage (e.g., 50 for 50%)
+  layoutLeft: number   // Left offset as percentage (e.g., 0, 50)
+  layoutColumn: number // Column index for rendering
+}
+
+// Detect overlapping tasks and calculate layout
+const calculateTaskLayouts = computed(() => {
+  if (tasks.value.length === 0) return []
+
+  // Create task layout objects with time positions
+  const taskLayouts: TaskLayout[] = tasks.value.map(task => ({
+    ...task,
+    layoutWidth: 100,
+    layoutLeft: 0,
+    layoutColumn: 0
+  }))
+
+  // Helper to check if two tasks overlap
+  const tasksOverlap = (task1: TaskLayout, task2: TaskLayout) => {
+    const start1 = getTaskPosition(task1.timeStart)
+    const end1 = start1 + getTaskHeight(task1.timeStart, task1.timeEnd)
+    const start2 = getTaskPosition(task2.timeStart)
+    const end2 = start2 + getTaskHeight(task2.timeStart, task2.timeEnd)
+
+    return start1 < end2 && start2 < end1
+  }
+
+  // Group overlapping tasks
+  const processedTasks = new Set<string>()
+  const overlapGroups: TaskLayout[][] = []
+
+  for (const task of taskLayouts) {
+    if (processedTasks.has(task.id)) continue
+
+    const group: TaskLayout[] = [task]
+    processedTasks.add(task.id)
+
+    // Find all tasks that overlap with this task or any task in the group
+    for (const otherTask of taskLayouts) {
+      if (processedTasks.has(otherTask.id)) continue
+
+      // Check if this task overlaps with any task in the current group
+      if (group.some(groupTask => tasksOverlap(groupTask, otherTask))) {
+        group.push(otherTask)
+        processedTasks.add(otherTask.id)
+      }
+    }
+
+    overlapGroups.push(group)
+  }
+
+  // Calculate layout for each group
+  for (const group of overlapGroups) {
+    if (group.length === 1) {
+      // Single task - full width
+      group[0].layoutWidth = 100
+      group[0].layoutLeft = 0
+      group[0].layoutColumn = 0
+    } else {
+      // Multiple overlapping tasks - arrange side by side
+      // Sort by start time, then by duration (shorter first for better visual)
+      group.sort((a, b) => {
+        const startA = getTaskPosition(a.timeStart)
+        const startB = getTaskPosition(b.timeStart)
+        if (startA !== startB) return startA - startB
+
+        const durationA = getTaskHeight(a.timeStart, a.timeEnd)
+        const durationB = getTaskHeight(b.timeStart, b.timeEnd)
+        return durationA - durationB
+      })
+
+      // Calculate columns needed
+      const columns: TaskLayout[][] = []
+
+      for (const task of group) {
+        // Find the first column where this task doesn't overlap with existing tasks
+        let placed = false
+        for (let i = 0; i < columns.length; i++) {
+          const column = columns[i]
+          const hasOverlap = column.some(existingTask => tasksOverlap(task, existingTask))
+
+          if (!hasOverlap) {
+            column.push(task)
+            task.layoutColumn = i
+            placed = true
+            break
+          }
+        }
+
+        // If no suitable column found, create a new one
+        if (!placed) {
+          columns.push([task])
+          task.layoutColumn = columns.length - 1
+        }
+      }
+
+      // Set width and left position based on column count
+      const columnCount = columns.length
+      const widthPercent = 100 / columnCount
+
+      for (const task of group) {
+        task.layoutWidth = widthPercent
+        task.layoutLeft = task.layoutColumn * widthPercent
+      }
+    }
+  }
+
+  return taskLayouts
+})
 </script>
 
 <template>
@@ -800,7 +912,7 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
             ></div>
 
             <div
-              v-for="task in tasks"
+              v-for="task in calculateTaskLayouts"
               :key="task.id"
               class="task-card"
               :class="[
@@ -813,7 +925,9 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
               ]"
               :style="{
                 top: getTaskPosition(task.timeStart) + 'px',
-                height: getTaskHeight(task.timeStart, task.timeEnd) + 'px'
+                height: getTaskHeight(task.timeStart, task.timeEnd) + 'px',
+                width: task.layoutWidth + '%',
+                left: task.layoutLeft + '%'
               }"
               @click="handleTaskCardClick(task)"
               @mouseenter="setHoveredTask(task.id)"
@@ -1296,7 +1410,6 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: absolute;
   overflow: visible;
-  width: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

@@ -137,12 +137,14 @@
 
           <!-- Adaptive blocks (right side) -->
           <div
-            v-for="(adaptiveBlock, index) in adaptiveBlocksWithTasks"
+            v-for="(adaptiveBlock, index) in adaptiveBlockLayouts"
             :key="`adaptive-${index}`"
             class="adaptive-block-slot"
             :style="{
               top: getComparisonPosition(adaptiveBlock.start) + 'px',
-              height: getAdaptiveBlockHeight(adaptiveBlock) + 'px'
+              height: getAdaptiveBlockHeight(adaptiveBlock) + 'px',
+              width: (adaptiveBlock.layoutWidth || 100) + '%',
+              left: 'calc(50% + 6px + ' + ((adaptiveBlock.layoutLeft || 0) / 2) + '%)'
             }"
           >
             <button
@@ -182,13 +184,15 @@
           </template>
 
           <!-- Planned tasks (left side) -->
-          <template v-for="(comparison, index) in comparisons" :key="`planned-${index}`">
+          <template v-for="(comparison, index) in comparisonsWithPlannedLayout" :key="`planned-${index}`">
             <div
               v-if="comparison.planned"
               class="planned-task-slot"
               :style="{
                 top: getComparisonPosition(comparison.planned.startTime) + 'px',
-                height: calculateHeightWithMin(comparison.planned.startTime, comparison.planned.endTime) + 'px'
+                height: calculateHeightWithMin(comparison.planned.startTime, comparison.planned.endTime) + 'px',
+                width: 'calc((((100% - 100px) / 2 - 2px) * ' + ((comparison as any).plannedLayout?.layoutWidth || 100) / 100 + ') - 2px)',
+                left: 'calc(100px + ((100% - 100px) / 2 - 2px) * ' + ((comparison as any).plannedLayout?.layoutLeft || 0) / 100 + ')'
               }"
             >
               <div class="planned-task" :class="{ 'short-task': isShortSession(comparison.planned.duration) }">
@@ -212,13 +216,15 @@
           </template>
 
           <!-- Actual tasks (right side) -->
-          <template v-for="(comparison, index) in comparisons" :key="`actual-${index}`">
+          <template v-for="(comparison, index) in comparisonsWithActualLayout" :key="`actual-${index}`">
             <div
               v-if="comparison.actual"
               class="actual-task-slot"
               :style="{
                 top: getComparisonPosition(comparison.actual.startTime) + 'px',
-                height: calculateHeightWithMin(comparison.actual.startTime, comparison.actual.endTime) + 'px'
+                height: calculateHeightWithMin(comparison.actual.startTime, comparison.actual.endTime) + 'px',
+                width: 'calc((((100% - 100px) / 2) * ' + ((comparison as any).actualLayout?.layoutWidth || 100) / 100 + ') - 2px)',
+                left: 'calc(100px + (100% - 100px) / 2 + 2px + ((100% - 100px) / 2) * ' + ((comparison as any).actualLayout?.layoutLeft || 0) / 100 + ')'
               }"
             >
               <div class="actual-task" :class="{ 'short-task': isShortSession(comparison.actual.duration) }">
@@ -266,6 +272,58 @@
       title="AI is Thinking..."
       description="Creating your optimized schedule. This may take a moment."
     />
+
+    <!-- AI Optimize Sidebar -->
+    <Transition name="sidebar-slide">
+      <div v-if="showSidebar" class="ai-sidebar">
+        <div class="sidebar-header">
+          <h3 class="sidebar-title">AI Schedule Optimizer</h3>
+          <button class="sidebar-close" @click="closeSidebar">×</button>
+        </div>
+
+        <div class="sidebar-body">
+          <!-- Input State -->
+          <div v-if="sidebarState === 'input'" class="sidebar-state">
+            <p class="sidebar-hint">
+              Tell me your scheduling preferences
+            </p>
+            <textarea
+              v-model="userPreference"
+              class="preference-input"
+              placeholder="e.g., I prefer to do focused work in the morning..."
+              rows="8"
+            ></textarea>
+            <button class="generate-btn" @click="handleSidebarProceed">
+              Generate Schedule
+            </button>
+          </div>
+
+          <!-- Loading State -->
+          <div v-if="sidebarState === 'loading'" class="sidebar-state loading-state">
+            <div class="spinner-container">
+              <div class="spinner"></div>
+            </div>
+            <p class="loading-text">Analyzing...</p>
+            <p class="loading-subtext">This may take a moment</p>
+          </div>
+
+          <!-- Result State -->
+          <div v-if="sidebarState === 'result'" class="sidebar-state result-state">
+            <div class="success-badge">
+              <span class="check-icon">✓</span>
+              Schedule Ready
+            </div>
+            <div class="analysis-box">
+              <h4 class="analysis-heading">Analysis</h4>
+              <div class="analysis-text">{{ aiAnalysis }}</div>
+            </div>
+            <button class="done-btn" @click="closeSidebar">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -603,6 +661,12 @@ const selectedMinuteForNewTask = ref(0)
 const showPreferenceModal = ref(false)
 const showLoadingModal = ref(false)
 
+// Sidebar state
+const showSidebar = ref(false)
+const sidebarState = ref<'input' | 'loading' | 'result'>('input')
+const aiAnalysis = ref('')
+const userPreference = ref('')
+
 // Adaptive schedule state
 interface AdaptiveBlockWithTasks extends AdaptiveBlock {
   tasks: Task[]
@@ -772,7 +836,16 @@ const handleTaskSubmit = async (taskData: any) => {
 
 // Optimize Schedule handlers
 const handleOptimizeSchedule = () => {
-  showPreferenceModal.value = true
+  showSidebar.value = true
+  sidebarState.value = 'input'
+  userPreference.value = ''
+}
+
+const closeSidebar = () => {
+  showSidebar.value = false
+  sidebarState.value = 'input'
+  aiAnalysis.value = ''
+  userPreference.value = ''
 }
 
 const closePreferenceModal = () => {
@@ -917,6 +990,69 @@ EXAMPLE 2 - Concurrency optimization (ALWAYS REQUIRED FOR PASSIVE TASKS):
 - WRONG: Any scheduling that extends past the deadline
 
 Return ONLY the JSON object, no additional text.`
+}
+
+const handleSidebarProceed = async () => {
+  if (!userPreference.value.trim()) {
+    alert('Please enter your schedule preference')
+    return
+  }
+
+  try {
+    // Show loading state in sidebar
+    sidebarState.value = 'loading'
+
+    // Fetch all required data
+    const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+    const timeBlocks = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER).catch(() => [])
+    const sessions = await RoutineLogAPI.getUserSessions(CURRENT_USER).catch(() => [])
+
+    // Create prompt
+    const prompt = createAdaptiveSchedulePrompt(
+      CURRENT_USER,
+      tasks,
+      timeBlocks,
+      sessions,
+      userPreference.value
+    )
+
+    // Call AI API
+    const result = await AdaptiveScheduleAPI.requestAdaptiveScheduleAI(CURRENT_USER, prompt)
+
+    // Store the analysis
+    aiAnalysis.value = result.analysis
+
+    // Fetch task details for each adaptive block
+    const blocksWithTasks: AdaptiveBlockWithTasks[] = []
+    for (const block of result.adaptiveBlockTable) {
+      const blockTasks: Task[] = []
+      for (const taskId of block.taskIdSet) {
+        try {
+          const task = await TaskCatalogAPI.getTask(CURRENT_USER, taskId)
+          blockTasks.push(task)
+        } catch (error) {
+          console.error(`Failed to fetch task ${taskId}:`, error)
+        }
+      }
+      blocksWithTasks.push({
+        ...block,
+        tasks: blockTasks
+      })
+    }
+
+    // Store results
+    adaptiveBlocksWithTasks.value = blocksWithTasks
+
+    // Refresh the view to show adaptive blocks
+    await fetchComparisons()
+
+    // Show result state with analysis
+    sidebarState.value = 'result'
+  } catch (error: any) {
+    console.error('Failed to generate adaptive schedule:', error)
+    sidebarState.value = 'input'
+    alert(`Failed to generate adaptive schedule: ${error.message || 'Unknown error'}`)
+  }
 }
 
 const handlePreferenceProceed = async (preference: string) => {
@@ -1255,6 +1391,226 @@ const fetchComparisons = async () => {
     isLoadingComparisons.value = false
   }
 }
+
+// Layout calculation for overlapping tasks
+interface TaskWithLayout {
+  startTime: number
+  endTime: number
+  layoutWidth: number  // Width as percentage (e.g., 50 for 50%)
+  layoutLeft: number   // Left offset as percentage (e.g., 0, 50)
+  layoutColumn: number // Column index
+}
+
+// Helper to check if two time ranges overlap
+const timeRangesOverlap = (start1: number, end1: number, start2: number, end2: number) => {
+  return start1 < end2 && start2 < end1
+}
+
+// Generic function to calculate layout for a list of tasks with time ranges
+const calculateOverlappingLayout = <T extends { startTime: number; endTime: number }>(
+  items: T[]
+): (T & TaskWithLayout)[] => {
+  if (items.length === 0) return []
+
+  // Create layout objects
+  const itemsWithLayout: (T & TaskWithLayout)[] = items.map(item => ({
+    ...item,
+    layoutWidth: 100,
+    layoutLeft: 0,
+    layoutColumn: 0
+  }))
+
+  // Group overlapping items
+  const processedItems = new Set<number>()
+  const overlapGroups: (T & TaskWithLayout)[][] = []
+
+  for (let i = 0; i < itemsWithLayout.length; i++) {
+    if (processedItems.has(i)) continue
+
+    const group: (T & TaskWithLayout)[] = [itemsWithLayout[i]]
+    processedItems.add(i)
+
+    // Find all items that overlap with this item or any item in the group
+    for (let j = 0; j < itemsWithLayout.length; j++) {
+      if (processedItems.has(j)) continue
+
+      // Check if this item overlaps with any item in the current group
+      const overlaps = group.some(groupItem =>
+        timeRangesOverlap(
+          groupItem.startTime,
+          groupItem.endTime,
+          itemsWithLayout[j].startTime,
+          itemsWithLayout[j].endTime
+        )
+      )
+
+      if (overlaps) {
+        group.push(itemsWithLayout[j])
+        processedItems.add(j)
+      }
+    }
+
+    overlapGroups.push(group)
+  }
+
+  // Calculate layout for each group
+  for (const group of overlapGroups) {
+    if (group.length === 1) {
+      // Single item - full width
+      group[0].layoutWidth = 100
+      group[0].layoutLeft = 0
+      group[0].layoutColumn = 0
+    } else {
+      // Multiple overlapping items - arrange side by side
+      // Sort by start time, then by duration (shorter first)
+      group.sort((a, b) => {
+        if (a.startTime !== b.startTime) return a.startTime - b.startTime
+        const durationA = a.endTime - a.startTime
+        const durationB = b.endTime - b.startTime
+        return durationA - durationB
+      })
+
+      // Calculate columns needed
+      const columns: (T & TaskWithLayout)[][] = []
+
+      for (const item of group) {
+        // Find the first column where this item doesn't overlap with existing items
+        let placed = false
+        for (let i = 0; i < columns.length; i++) {
+          const column = columns[i]
+          const hasOverlap = column.some(existingItem =>
+            timeRangesOverlap(
+              item.startTime,
+              item.endTime,
+              existingItem.startTime,
+              existingItem.endTime
+            )
+          )
+
+          if (!hasOverlap) {
+            column.push(item)
+            item.layoutColumn = i
+            placed = true
+            break
+          }
+        }
+
+        // If no suitable column found, create a new one
+        if (!placed) {
+          columns.push([item])
+          item.layoutColumn = columns.length - 1
+        }
+      }
+
+      // Set width and left position based on column count
+      const columnCount = columns.length
+      const widthPercent = 100 / columnCount
+
+      for (const item of group) {
+        item.layoutWidth = widthPercent
+        item.layoutLeft = item.layoutColumn * widthPercent
+      }
+    }
+  }
+
+  return itemsWithLayout
+}
+
+// Calculate layouts for planned tasks
+const plannedTaskLayouts = computed(() => {
+  console.log('Total comparisons:', comparisons.value.length)
+  console.log('Comparisons sample:', comparisons.value.slice(0, 3))
+
+  const plannedTasks = comparisons.value
+    .filter(c => c.planned)
+    .map(c => c.planned!)
+
+  console.log('Filtered planned tasks:', plannedTasks.length)
+  console.log('Planned tasks sample:', plannedTasks.slice(0, 3))
+
+  const layouts = calculateOverlappingLayout(plannedTasks)
+  console.log('Calculated layouts:', layouts.map(l => ({
+    start: l.startTime,
+    end: l.endTime,
+    width: l.layoutWidth,
+    left: l.layoutLeft,
+    column: l.layoutColumn
+  })))
+
+  return layouts
+})
+
+// Calculate layouts for actual tasks
+const actualTaskLayouts = computed(() => {
+  const actualTasks = comparisons.value
+    .filter(c => c.actual)
+    .map(c => c.actual!)
+  return calculateOverlappingLayout(actualTasks)
+})
+
+// Calculate layouts for adaptive blocks
+const adaptiveBlockLayouts = computed(() => {
+  const blocks = adaptiveBlocksWithTasks.value.map(block => ({
+    ...block,
+    startTime: block.start,
+    endTime: block.end
+  }))
+  return calculateOverlappingLayout(blocks)
+})
+
+// Create comparisons with layouts attached
+const comparisonsWithPlannedLayout = computed(() => {
+  const result = comparisons.value.map(comparison => {
+    if (!comparison.planned) return comparison
+
+    const layout = plannedTaskLayouts.value.find(
+      layout =>
+        layout.startTime === comparison.planned!.startTime &&
+        layout.endTime === comparison.planned!.endTime &&
+        layout.taskName === comparison.planned!.taskName
+    )
+
+    console.log('Matching task:', comparison.planned?.taskName,
+      'start:', comparison.planned?.startTime,
+      'end:', comparison.planned?.endTime,
+      'found layout:', layout ? `width=${layout.layoutWidth} left=${layout.layoutLeft} col=${layout.layoutColumn}` : 'NOT FOUND')
+
+    const withLayout = {
+      ...comparison,
+      plannedLayout: layout || { layoutWidth: 100, layoutLeft: 0 }
+    }
+
+    // Debug logging
+    if (layout && (layout.layoutWidth !== 100 || layout.layoutLeft !== 0)) {
+      console.log('Planned task with overlap:', comparison.planned?.taskName, 'width:', layout.layoutWidth, 'left:', layout.layoutLeft)
+    }
+
+    return withLayout
+  })
+
+  console.log('Total planned tasks:', result.filter(c => c.planned).length)
+  console.log('Planned layouts calculated:', plannedTaskLayouts.value.length)
+
+  return result
+})
+
+const comparisonsWithActualLayout = computed(() => {
+  return comparisons.value.map(comparison => {
+    if (!comparison.actual) return comparison
+
+    const layout = actualTaskLayouts.value.find(
+      layout =>
+        layout.startTime === comparison.actual!.startTime &&
+        layout.endTime === comparison.actual!.endTime &&
+        layout.taskName === comparison.actual!.taskName
+    )
+
+    return {
+      ...comparison,
+      actualLayout: layout || { layoutWidth: 100, layoutLeft: 0 }
+    }
+  })
+})
 
 onMounted(async () => {
   // Initialize selected date
@@ -1651,16 +2007,12 @@ onMounted(async () => {
 
 .planned-task-slot {
   position: absolute;
-  left: 100px;
-  width: calc((100% - 100px) / 2 - 2px); /* Half of remaining width minus half gap */
   padding: 0;
   box-sizing: border-box;
 }
 
 .actual-task-slot {
   position: absolute;
-  left: calc(100px + (100% - 100px) / 2 + 2px); /* Start at midpoint plus half gap */
-  right: 0;
   padding: 0;
   box-sizing: border-box;
 }
@@ -2035,8 +2387,6 @@ onMounted(async () => {
 
 .adaptive-block-slot {
   position: absolute;
-  left: calc(50% + 6px); /* Right half of the timeline, accounting for gap */
-  right: 0;
   padding: 0; /* No padding - height proportional to duration */
   box-sizing: border-box;
 }
@@ -2273,5 +2623,236 @@ onMounted(async () => {
 .insight-text {
   color: #F5E8D8;
   flex: 1;
+}
+
+/* AI Sidebar - Inline, Minimalistic Design */
+.ai-sidebar {
+  position: fixed;
+  right: 0;
+  top: 72px; /* Below navbar */
+  width: 360px;
+  height: calc(100vh - 72px);
+  background: #1a1a1a;
+  border-left: 1px solid rgba(245, 232, 216, 0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+}
+
+.sidebar-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(245, 232, 216, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F5E8D8;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.sidebar-close {
+  background: transparent;
+  border: none;
+  color: rgba(245, 232, 216, 0.6);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.sidebar-close:hover {
+  background: rgba(245, 232, 216, 0.1);
+  color: #F5E8D8;
+}
+
+.sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.sidebar-state {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar-hint {
+  font-size: 13px;
+  color: rgba(245, 232, 216, 0.6);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.preference-input {
+  background: rgba(245, 232, 216, 0.03);
+  border: 1px solid rgba(245, 232, 216, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  color: #F5E8D8;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  transition: border-color 0.2s ease;
+}
+
+.preference-input:focus {
+  outline: none;
+  border-color: rgba(255, 111, 97, 0.4);
+}
+
+.preference-input::placeholder {
+  color: rgba(245, 232, 216, 0.3);
+}
+
+.generate-btn {
+  background: #FF6F61;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 16px;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.generate-btn:hover {
+  background: #FF8A7A;
+}
+
+.loading-state {
+  align-items: center;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.spinner-container {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 16px;
+}
+
+.spinner {
+  width: 100%;
+  height: 100%;
+  border: 3px solid rgba(245, 232, 216, 0.1);
+  border-top-color: #FF6F61;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #F5E8D8;
+  margin: 0 0 4px 0;
+}
+
+.loading-subtext {
+  font-size: 12px;
+  color: rgba(245, 232, 216, 0.5);
+  margin: 0;
+}
+
+.result-state {
+  gap: 24px;
+}
+
+.success-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4CAF50;
+}
+
+.check-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: #4CAF50;
+  border-radius: 50%;
+  color: white;
+  font-size: 12px;
+}
+
+.analysis-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.analysis-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: #F5E8D8;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.analysis-text {
+  background: rgba(245, 232, 216, 0.03);
+  border: 1px solid rgba(245, 232, 216, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  color: rgba(245, 232, 216, 0.8);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.done-btn {
+  background: transparent;
+  border: 1px solid rgba(245, 232, 216, 0.2);
+  border-radius: 6px;
+  padding: 10px 16px;
+  color: #F5E8D8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.done-btn:hover {
+  background: rgba(245, 232, 216, 0.05);
+  border-color: rgba(245, 232, 216, 0.3);
+}
+
+/* Sidebar Transition */
+.sidebar-slide-enter-active,
+.sidebar-slide-leave-active {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-slide-enter-from,
+.sidebar-slide-leave-to {
+  transform: translateX(100%);
 }
 </style>
