@@ -1552,11 +1552,12 @@ onMounted(async () => {
 
 .timeline-wrapper {
   position: relative;
-  width: 100%;
-  height: calc(100vh - 350px);
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  height: 48vh;
   overflow-y: auto;
   overflow-x: hidden;
-  margin-bottom: 32px;
+  margin-bottom: 5em;
 }
 
 .timeline-wrapper::-webkit-scrollbar {
@@ -1579,7 +1580,9 @@ onMounted(async () => {
 .unified-timeline {
   position: relative;
   padding-left: 100px;
-  width: 100%;
+  width: 600px;
+  max-width: 600px;
+  margin: 0 auto;
   min-height: 2880px; /* 24 hours * 120px per hour = 2880px */
   height: 2880px;
 }

@@ -900,7 +900,7 @@ const getTaskHeight = (timeStart: string, timeEnd: string) => {
   top: 0;
   z-index: 100;
   border-bottom: 1px solid #333;
-  width: 100%;
+  width: 100vw;
 }
 
 .header-content {

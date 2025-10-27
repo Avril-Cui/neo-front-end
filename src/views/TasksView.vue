@@ -52,6 +52,41 @@
           All your tasks across the system.
         </p>
 
+        <!-- Search and Filter Controls -->
+        <div class="search-filter-container">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input
+              type="text"
+              v-model="searchQuery"
+              placeholder="Search tasks by name..."
+              class="search-input"
+            />
+          </div>
+          <div class="filter-controls">
+            <div class="filter-wrapper">
+              <span class="filter-icon">⚡</span>
+              <select v-model="filterPriority" class="filter-select">
+                <option value="">All Priorities</option>
+                <option value="5">Priority 5 - Critical</option>
+                <option value="4">Priority 4 - Important</option>
+                <option value="3">Priority 3 - Regular</option>
+                <option value="2">Priority 2 - Low</option>
+                <option value="1">Priority 1 - Optional</option>
+              </select>
+            </div>
+            <div class="filter-wrapper">
+              <span class="filter-icon">📁</span>
+              <select v-model="filterCategory" class="filter-select">
+                <option value="">All Categories</option>
+                <option v-for="category in uniqueCategories" :key="category" :value="category">
+                  {{ category }}
+                </option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div v-if="isLoadingTasks" class="loading-state">
           <div class="spinner"></div>
           <p>Loading tasks...</p>
@@ -63,12 +98,19 @@
           <p>Create tasks from the Today view to get started.</p>
         </div>
 
-        <div v-else class="tasks-grid">
-          <div
-            v-for="task in allTasks"
-            :key="task.taskId"
-            class="task-card all-task"
-          >
+        <div v-else-if="filteredTasks.length === 0" class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <h2>No Tasks Found</h2>
+          <p>Try adjusting your search or filters.</p>
+        </div>
+
+        <div v-else class="tasks-scrollable-container">
+          <div class="tasks-grid">
+            <div
+              v-for="task in filteredTasks"
+              :key="task.taskId"
+              class="task-card all-task"
+            >
             <button
               class="delete-task-button"
               @click="deleteTask(task, $event)"
@@ -118,6 +160,7 @@
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
 
@@ -179,7 +222,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { AdaptiveScheduleAPI, TaskCatalogAPI, type DroppedTask, type Task } from '../services/api'
 import { useAuthStore } from '../stores/auth'
@@ -199,6 +242,46 @@ const handleLogout = () => {
 // All tasks state
 const allTasks = ref<Task[]>([])
 const isLoadingTasks = ref(true)
+
+// Search and filter state
+const searchQuery = ref('')
+const filterPriority = ref('')
+const filterCategory = ref('')
+
+// Computed: Get unique categories from all tasks
+const uniqueCategories = computed(() => {
+  const categories = new Set(allTasks.value.map(task => task.category))
+  return Array.from(categories).sort()
+})
+
+// Computed: Filtered tasks based on search and filters
+const filteredTasks = computed(() => {
+  let tasks = allTasks.value
+
+  // Apply search filter
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase()
+    tasks = tasks.filter(task =>
+      task.taskName.toLowerCase().includes(query)
+    )
+  }
+
+  // Apply priority filter
+  if (filterPriority.value) {
+    tasks = tasks.filter(task =>
+      task.priority === parseInt(filterPriority.value)
+    )
+  }
+
+  // Apply category filter
+  if (filterCategory.value) {
+    tasks = tasks.filter(task =>
+      task.category === filterCategory.value
+    )
+  }
+
+  return tasks
+})
 
 // Dropped tasks state
 const isLoadingDropped = ref(true)
@@ -437,14 +520,178 @@ onMounted(() => {
 .page-description {
   font-size: 16px;
   color: #AAA;
+  margin-bottom: 24px;
+}
+
+.search-filter-container {
+  display: flex;
+  gap: 16px;
   margin-bottom: 32px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 320px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(42, 42, 42, 0.95) 0%, rgba(51, 51, 51, 0.95) 100%);
+  border-radius: 16px;
+  border: 2px solid rgba(245, 232, 216, 0.15);
+  padding: 0 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.search-box:hover {
+  border-color: rgba(245, 232, 216, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.search-box:focus-within {
+  border-color: rgba(255, 111, 97, 0.6);
+  box-shadow: 0 4px 20px rgba(255, 111, 97, 0.25);
+  background: linear-gradient(135deg, rgba(42, 42, 42, 1) 0%, rgba(51, 51, 51, 1) 100%);
+}
+
+.search-icon {
+  font-size: 20px;
+  margin-right: 14px;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.search-box:focus-within .search-icon {
+  opacity: 0.8;
+}
+
+.search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 16px 0;
+  font-size: 15px;
+  color: #F5E8D8;
+  font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-weight: 500;
+}
+
+.search-input::placeholder {
+  color: rgba(245, 232, 216, 0.35);
+  font-weight: 400;
+}
+
+.filter-controls {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.filter-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(42, 42, 42, 0.95) 0%, rgba(51, 51, 51, 0.95) 100%);
+  border: 2px solid rgba(245, 232, 216, 0.15);
+  border-radius: 16px;
+  padding: 0 20px 0 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.filter-wrapper:hover {
+  border-color: rgba(245, 232, 216, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.filter-wrapper:focus-within {
+  border-color: rgba(255, 111, 97, 0.6);
+  box-shadow: 0 4px 20px rgba(255, 111, 97, 0.25);
+  background: linear-gradient(135deg, rgba(42, 42, 42, 1) 0%, rgba(51, 51, 51, 1) 100%);
+}
+
+.filter-icon {
+  font-size: 18px;
+  margin-right: 12px;
+  opacity: 0.6;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.filter-wrapper:focus-within .filter-icon {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.filter-select {
+  background: transparent;
+  border: none;
+  padding: 14px 28px 14px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #F5E8D8;
+  cursor: pointer;
+  outline: none;
+  font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  min-width: 160px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%23F5E8D8' opacity='0.7' d='M7 10L2 5h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  background-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.filter-select:hover {
+  color: #FFFFFF;
+}
+
+.filter-select option {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  color: #F5E8D8;
+  padding: 16px 24px;
+  font-weight: 500;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(245, 232, 216, 0.08);
+  transition: all 0.2s ease;
+  line-height: 1.6;
+}
+
+.filter-select option:first-child {
+  font-weight: 700;
+  color: #FF6F61;
+  background: linear-gradient(135deg, rgba(255, 111, 97, 0.15) 0%, rgba(255, 111, 97, 0.08) 100%);
+  border-bottom: 2px solid rgba(255, 111, 97, 0.3);
+}
+
+.filter-select option:hover,
+.filter-select option:focus,
+.filter-select option:checked {
+  background: linear-gradient(135deg, rgba(255, 111, 97, 0.2) 0%, rgba(255, 111, 97, 0.15) 100%);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.filter-select option:active {
+  background: linear-gradient(135deg, rgba(255, 111, 97, 0.3) 0%, rgba(255, 111, 97, 0.2) 100%);
+}
+
+.tasks-scrollable-container {
+  height: 70vh;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .tasks-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
-  margin-top: 24px;
 }
 
 @media (min-width: 1024px) {
