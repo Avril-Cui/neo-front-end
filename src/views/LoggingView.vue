@@ -244,15 +244,19 @@ const requestNotificationPermission = async () => {
   }
 }
 
-const stopTimer = async () => {
-  try {
-    // Ask user if they finished the task
-    const isDone = confirm('Did you finish the task?')
+const showCompletionModal = ref(false)
 
+const stopTimer = async () => {
+  // Show completion modal instead of confirm dialog
+  showCompletionModal.value = true
+}
+
+const confirmCompletion = async (isCompleted: boolean) => {
+  try {
     // End the session in the backend if we have a session ID
     if (currentSessionId.value) {
-      await RoutineLogAPI.endSession(CURRENT_USER, { _id: currentSessionId.value }, isDone)
-      console.log('Session ended:', currentSessionId.value, 'isDone:', isDone)
+      await RoutineLogAPI.endSession(CURRENT_USER, { _id: currentSessionId.value }, isCompleted)
+      console.log('Session ended:', currentSessionId.value, 'isCompleted:', isCompleted)
     }
 
     isRunning.value = false
@@ -262,8 +266,10 @@ const stopTimer = async () => {
       timerInterval = null
     }
 
-    const statusText = isDone ? 'finished' : 'incomplete'
-    alert(`Session completed (${statusText})! Time: ${formatTime(elapsedTime.value)}`)
+    showCompletionModal.value = false
+
+    const statusText = isCompleted ? 'completed' : 'not completed'
+    alert(`Session ended (${statusText})! Time: ${formatTime(elapsedTime.value)}`)
 
     // Reset session tracking
     currentSessionId.value = null
@@ -277,6 +283,10 @@ const stopTimer = async () => {
     console.error('Failed to end session:', error)
     alert(`Failed to end session: ${error.message || 'Unknown error'}`)
   }
+}
+
+const cancelCompletion = () => {
+  showCompletionModal.value = false
 }
 
 const interruptTimer = () => {
@@ -412,14 +422,35 @@ const hidePauseModal = () => {
   selectedPauseReason.value = ''
 }
 
+// Computed: Sort tasks by scheduled time proximity to current time
+const sortedUserTasks = computed(() => {
+  const now = Date.now()
+
+  return [...userTasks.value].sort((a, b) => {
+    const aSchedule = taskScheduleTimes.value.get(a.taskId)
+    const bSchedule = taskScheduleTimes.value.get(b.taskId)
+
+    // Tasks without schedules go to the end
+    if (!aSchedule && !bSchedule) return 0
+    if (!aSchedule) return 1
+    if (!bSchedule) return -1
+
+    // Calculate time difference from now (absolute value)
+    const aDiff = Math.abs(aSchedule.start - now)
+    const bDiff = Math.abs(bSchedule.start - now)
+
+    // Sort by proximity (closest to current time first)
+    return aDiff - bDiff
+  })
+})
+
 // Fetch user tasks from API
 const fetchUserTasks = async () => {
   try {
     isLoadingTasks.value = true
     const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
-    // Reverse the order to show most recently created tasks first
-    userTasks.value = [...tasks].reverse()
-    console.log('Fetched user tasks (most recent first):', userTasks.value)
+    userTasks.value = tasks
+    console.log('Fetched user tasks:', userTasks.value)
   } catch (error: any) {
     console.error('Failed to fetch user tasks:', error)
     if (!error.message?.includes('No tasks found')) {
@@ -897,7 +928,7 @@ onUnmounted(() => {
             <template v-else>
               <div v-if="userTasks.length > 0" class="suggestions-section-header">Planned Tasks</div>
               <div
-                v-for="task in userTasks"
+                v-for="task in sortedUserTasks"
                 :key="task.taskId"
                 class="suggestion-item"
                 @mousedown="selectTaskFromSuggestions(task)"
@@ -1044,6 +1075,23 @@ onUnmounted(() => {
 
     <div class="floating-controls">
       <button class="control-button reset" @click="resetTimer" title="Reset">🔄</button>
+    </div>
+
+    <!-- Completion Modal -->
+    <div class="pause-modal" :class="{ active: showCompletionModal }">
+      <div class="pause-dialog">
+        <div class="pause-title">Did you complete the task?</div>
+        <div class="pause-subtitle">Let us know if you finished what you planned to do</div>
+        <div class="completion-actions">
+          <button class="completion-btn completed" @click="confirmCompletion(true)">
+            ✓ Completed
+          </button>
+          <button class="completion-btn not-completed" @click="confirmCompletion(false)">
+            ✕ Not Completed
+          </button>
+        </div>
+        <button class="completion-cancel" @click="cancelCompletion">Cancel</button>
+      </div>
     </div>
 
     <!-- Interrupt Reason Modal -->
@@ -2167,5 +2215,75 @@ onUnmounted(() => {
 .pause-btn.confirm {
   background: #daa520;
   color: #1c1c1c;
+}
+
+/* Completion Modal Styles */
+.pause-subtitle {
+  font-size: 14px;
+  color: #aaa;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.completion-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.completion-btn {
+  flex: 1;
+  padding: 16px;
+  border: none;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.completion-btn.completed {
+  background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.completion-btn.completed:hover {
+  background: linear-gradient(135deg, #66bb6a 0%, #81c784 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+}
+
+.completion-btn.not-completed {
+  background: linear-gradient(135deg, #ff6f61 0%, #ff8575 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(255, 111, 97, 0.3);
+}
+
+.completion-btn.not-completed:hover {
+  background: linear-gradient(135deg, #ff8575 0%, #ffa590 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 111, 97, 0.4);
+}
+
+.completion-cancel {
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  color: #aaa;
+  border: 1px solid rgba(245, 232, 216, 0.2);
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.completion-cancel:hover {
+  background: rgba(245, 232, 216, 0.05);
+  color: #f5e8d8;
 }
 </style>

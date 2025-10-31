@@ -1921,7 +1921,6 @@ onMounted(async () => {
   height: 48vh;
   overflow-y: auto;
   overflow-x: hidden;
-  margin-bottom: 5em;
 }
 
 .timeline-wrapper::-webkit-scrollbar {
