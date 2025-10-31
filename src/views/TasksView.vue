@@ -217,37 +217,59 @@
           <p>All tasks have been successfully scheduled.</p>
         </div>
 
-        <div v-else class="tasks-list">
-          <div
-            v-for="droppedTask in droppedTasksWithDetails"
-            :key="droppedTask.taskId"
-            class="task-card"
-          >
-            <div class="task-header">
-              <div class="task-name">{{ droppedTask.task?.taskName || droppedTask.taskId }}</div>
-              <div class="task-priority" :class="`priority-${droppedTask.task?.priority || 3}`">
-                Priority {{ droppedTask.task?.priority || '?' }}
+        <div v-else class="tasks-scrollable-container">
+          <div class="tasks-grid">
+            <div
+              v-for="droppedTask in droppedTasksWithDetails"
+              :key="droppedTask.taskId"
+              class="task-card all-task dropped-task"
+            >
+              <div class="task-header">
+                <div class="task-name">{{ droppedTask.task?.taskName || droppedTask.taskId }}</div>
+                <div class="task-priority" :class="`priority-${droppedTask.task?.priority || 3}`">
+                  Priority {{ droppedTask.task?.priority || '?' }}
+                </div>
               </div>
-            </div>
 
-            <div v-if="droppedTask.task" class="task-details">
-              <div class="detail-row">
-                <span class="detail-label">Category:</span>
-                <span class="detail-value">{{ droppedTask.task.category }}</span>
+              <div v-if="droppedTask.task" class="task-details">
+                <div class="detail-row">
+                  <span class="detail-label">📁 Category:</span>
+                  <span class="detail-value category-badge">{{ droppedTask.task.category }}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">⏱️ Duration:</span>
+                  <span class="detail-value">{{ droppedTask.task.duration }} min</span>
+                </div>
+                <div v-if="droppedTask.task.deadline" class="detail-row">
+                  <span class="detail-label">📅 Deadline:</span>
+                  <span class="detail-value">{{ formatDateTime(droppedTask.task.deadline) }}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">✂️ Splittable:</span>
+                  <span class="detail-value">{{ droppedTask.task.splittable ? 'Yes' : 'No' }}</span>
+                </div>
               </div>
-              <div class="detail-row">
-                <span class="detail-label">Duration:</span>
-                <span class="detail-value">{{ droppedTask.task.duration }} minutes</span>
-              </div>
-              <div v-if="droppedTask.task.deadline" class="detail-row">
-                <span class="detail-label">Deadline:</span>
-                <span class="detail-value">{{ formatDateTime(droppedTask.task.deadline) }}</span>
-              </div>
-            </div>
 
-            <div class="task-reason">
-              <span class="reason-label">Reason:</span>
-              <span class="reason-text">{{ droppedTask.reason }}</span>
+              <div v-if="droppedTask.task?.note" class="task-note">
+                <span class="note-label">📝 Note:</span>
+                <span class="note-text">{{ droppedTask.task.note }}</span>
+              </div>
+
+              <div class="task-reason">
+                <span class="reason-label">⚠️ Dropped Reason:</span>
+                <span class="reason-text">{{ droppedTask.reason }}</span>
+              </div>
+
+              <div class="task-stats">
+                <div class="stat-item">
+                  <span class="stat-value">{{ droppedTask.task?.timeBlockSet.length || 0 }}</span>
+                  <span class="stat-label">Schedules</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-value">{{ droppedTask.task?.preDependence?.length || 0 }}</span>
+                  <span class="stat-label">Dependencies</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1125,23 +1147,12 @@ onMounted(() => {
   color: #AAA;
 }
 
-.tasks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.task-card.dropped-task {
+  border-color: rgba(255, 68, 68, 0.5);
 }
 
-.task-card {
-  background: linear-gradient(135deg, #2A2A2A 0%, #333 100%);
-  border-radius: 12px;
-  padding: 20px;
-  border: 2px solid #FF4444;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-}
-
-.task-card:hover {
-  transform: translateY(-2px);
+.task-card.dropped-task:hover {
+  border-color: rgba(255, 68, 68, 0.7);
   box-shadow: 0 6px 24px rgba(255, 68, 68, 0.3);
 }
 
@@ -1153,7 +1164,7 @@ onMounted(() => {
 }
 
 .task-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #F5E8D8;
 }

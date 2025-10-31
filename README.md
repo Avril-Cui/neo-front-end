@@ -3,7 +3,19 @@ Most productivity tools force people into rigid plans that crumble the moment re
 
 # Screen Recording
 Click on the image below, and you will get redirected to a youtube video.
-[![Watch the video](https://img.youtube.com/vi/1UaaDkHHux0/hqdefault.jpg)](https://www.youtube.com/watch?v=1UaaDkHHux0)
+
+[![Watch the video](https://img.youtube.com/vi/9NCZIb1qXjs/hqdefault.jpg)](https://www.youtube.com/watch?v=9NCZIb1qXjs)
+
+# Visual design study
+![VS1](visual/VS1.png)
+![VS2](visual/VS2.png)
+
+# Styling and layout
+![today](visual/today_ui.png)
+![add](visual/addtask_ui.png)
+![refined-compare](visual/compare_refine.png)
+![record](visual/record_ui.png)
+![record_palse_ui](visual/record_palse_ui.png)
 
 # User Journey
 ## One-paragraph version
@@ -25,4 +37,3 @@ By afternoon, Friday looks at the compare interface and notices that too many in
 At the end of the day, Friday revisits the compare page. The timeline shows what matched perfectly in green, what deviated in red, and what got dynamically rescheduled in grey. Instead of feeling guilty about unfinished items, Friday sees a rationalized schedule where the most important tasks were accomplished despite interruptions.
 
 Neo reframes deviations as learning opportunities. For Friday, this means ending the day with clarity rather than guilt. He learns about his own focus pattern, energy cycles, and work habits. Most importantly, Neo helps him finished most of his high-priority tasks. Over time, Friday builds more realistic schedules and feels more effective as a busy product manager.
-

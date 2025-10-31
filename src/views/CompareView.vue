@@ -147,13 +147,22 @@
               left: 'calc(100px + (100% - 100px) / 2 + 2px + ((100% - 100px) / 2) * ' + ((adaptiveBlock.layoutLeft || 0) / 100) + ')'
             }"
           >
-            <button
-              class="delete-adaptive-block-btn"
-              @click="deleteAdaptiveBlock(adaptiveBlock.timeBlockId)"
-              title="Delete this adaptive block"
-            >
-              ✕
-            </button>
+            <div class="adaptive-block-actions">
+              <button
+                class="accept-adaptive-block-btn"
+                @click="acceptAdaptiveBlock(adaptiveBlock)"
+                title="Accept this adaptive schedule"
+              >
+                ✓
+              </button>
+              <button
+                class="reject-adaptive-block-btn"
+                @click="rejectAdaptiveBlock(adaptiveBlock.timeBlockId)"
+                title="Reject this adaptive block"
+              >
+                ✕
+              </button>
+            </div>
             <div
               v-for="task in adaptiveBlock.tasks"
               :key="task.taskId"
@@ -175,12 +184,21 @@
                 height: calculateHeightWithMin(comparison.startTime || 0, comparison.endTime || 0) + 'px'
               }"
             >
-              <div class="task-perfect-match">
-                <div class="task-title-inline">
+              <div class="task-perfect-match" :class="{ 'short-task': isShortSession(comparison.duration) }">
+                <!-- Short task: only show task name with inline completed badge -->
+                <div class="task-title-inline" v-if="isShortSession(comparison.duration)">
                   {{ comparison.taskName }}
-                  <span v-if="comparison.isDone" class="completed-badge" style="margin: 0 4px;">Completed</span>
-                  <span class="inline-label perfect-match-label">PERFECT MATCH</span>
+                  <span v-if="comparison.isDone" class="completed-badge" style="margin-left: 6px;">Completed</span>
                 </div>
+                <!-- Regular task: show time, title, and metadata -->
+                <template v-else>
+                  <div class="task-time">{{ comparison.timeRange }}</div>
+                  <div class="task-title">{{ comparison.taskName }}</div>
+                  <div class="task-meta">
+                    <span class="task-duration">{{ comparison.duration }} • {{ comparison.category }}</span>
+                    <span v-if="comparison.isDone" class="completed-badge" style="margin-left: 6px;">Completed</span>
+                  </div>
+                </template>
               </div>
             </div>
           </template>
@@ -197,10 +215,26 @@
                 left: 'calc(100px + ((100% - 100px) / 2 - 2px) * ' + ((comparison as any).plannedLayout?.layoutLeft || 0) / 100 + ')'
               }"
             >
+              <button
+                v-if="comparison.planned.taskId && comparison.planned.timeBlockId"
+                class="delete-schedule-btn"
+                @click="deleteSchedule(comparison.planned.taskId, comparison.planned.timeBlockId)"
+                title="Delete this schedule"
+              >
+                ×
+              </button>
               <div class="planned-task" :class="{ 'short-task': isShortSession(comparison.planned.duration) }">
-                <!-- Short task: only show task name with inline label -->
+                <!-- Short task: only show task name with inline label and badges -->
                 <div class="task-title-inline" v-if="isShortSession(comparison.planned.duration)">
-                  {{ comparison.planned.taskName }} <span class="inline-label">PLANNED</span>
+                  {{ comparison.planned.taskName }}
+                  <span v-if="comparison.planned.isDone" class="completed-badge" style="margin: 0 4px;">Completed</span>
+                  <span v-if="comparison.planned.varianceText" class="variance-badge" :class="{
+                    'skipped': comparison.planned.varianceText === 'Skipped',
+                    'incomplete': comparison.planned.varianceText === 'Incomplete'
+                  }" style="margin: 0 4px;">
+                    {{ comparison.planned.varianceText }}
+                  </span>
+                  <span class="inline-label">PLANNED</span>
                 </div>
                 <!-- Regular task: show time, title, and metadata -->
                 <template v-else>
@@ -236,9 +270,17 @@
               }"
             >
               <div class="actual-task" :class="{ 'short-task': isShortSession(comparison.actual.duration) }">
-                <!-- Short task: only show task name with inline label -->
+                <!-- Short task: only show task name with inline label and badges -->
                 <div class="task-title-inline" v-if="isShortSession(comparison.actual.duration)">
-                  {{ comparison.actual.taskName }} <span class="inline-label">ACTUAL</span>
+                  {{ comparison.actual.taskName }}
+                  <span v-if="comparison.actual.isDone" class="completed-badge" style="margin: 0 4px;">Completed</span>
+                  <span v-if="comparison.actual.varianceText" class="variance-badge" :class="{
+                    'skipped': comparison.actual.varianceText === 'Skipped',
+                    'incomplete': comparison.actual.varianceText === 'Incomplete'
+                  }" style="margin: 0 4px;">
+                    {{ comparison.actual.varianceText }}
+                  </span>
+                  <span class="inline-label">ACTUAL</span>
                 </div>
                 <!-- Regular task: show time, title, and metadata -->
                 <template v-else>
@@ -648,6 +690,8 @@ interface Comparison {
   startTime?: number  // For sorting and positioning
   endTime?: number    // For height calculation
   timeDeviationMs?: number  // Time deviation in milliseconds
+  taskId?: string     // For deleting schedules
+  timeBlockId?: string // For deleting schedules
   planned?: {
     timeRange: string
     taskName: string
@@ -657,6 +701,8 @@ interface Comparison {
     isDone?: boolean   // Whether the linked routine was completed
     startTime: number  // Actual timestamp
     endTime: number    // Actual timestamp
+    taskId?: string
+    timeBlockId?: string
   }
   actual?: {
     timeRange: string
@@ -1015,6 +1061,7 @@ CRITICAL REQUIREMENTS:
 8. Provide reasoning for why actual routine deviated from the original planned schedule
 9. For a task with a long duration and is splittable, consider splitting it into multiple non-consecutive time blocks for better focus
 10. If time is insufficient to schedule all tasks, prioritize tasks with urgent deadlines (approaching soon) or higher priority (1-2); only drop tasks if absolutely no time remains
+11. If the task is time sensitive and that critical time is already passed, YOU MUST NOT reschedule it (i.e., DO NOT GENERATE AN ADAPTIVE SCHEDULE FOR IT). For example, if the task is lunch break, but the current time is already in the afternoon, add this task to the droppedTasks, and mark reason as "Lunch time is already passed, cannot reschedule this." Do not generate a schedule for lunch.
 
 Return your response as a JSON object with this exact structure:
 {
@@ -1267,10 +1314,51 @@ const handlePreferenceProceed = async (preference: string) => {
   }
 }
 
-// Delete an adaptive block
-const deleteAdaptiveBlock = async (timeBlockId: string) => {
+// Accept an adaptive block (create schedule and delete adaptive block)
+const acceptAdaptiveBlock = async (adaptiveBlock: AdaptiveBlockWithTasks) => {
   try {
-    if (!confirm('Are you sure you want to delete this adaptive block?')) {
+    if (!confirm('Are you sure you want to accept this adaptive schedule? This will create a schedule for the task at this time.')) {
+      return
+    }
+
+    // Create schedule for each task in the adaptive block
+    for (const task of adaptiveBlock.tasks) {
+      // Step 1: Create/assign time block
+      const result = await ScheduleTimeAPI.assignTimeBlock({
+        owner: CURRENT_USER,
+        taskId: task.taskId,
+        start: adaptiveBlock.start,
+        end: adaptiveBlock.end
+      })
+      console.log(`Created time block for task ${task.taskName}:`, result)
+
+      // Step 2: Update task's timeBlockSet with the new time block ID
+      await TaskCatalogAPI.assignSchedule(CURRENT_USER, task.taskId, result.timeBlockId)
+      console.log(`Updated task ${task.taskName} with time block ${result.timeBlockId}`)
+    }
+
+    // Delete the adaptive block
+    await AdaptiveScheduleAPI.deleteAdaptiveBlock(CURRENT_USER, adaptiveBlock.timeBlockId)
+
+    // Remove from local state
+    adaptiveBlocksWithTasks.value = adaptiveBlocksWithTasks.value.filter(
+      block => block.timeBlockId !== adaptiveBlock.timeBlockId
+    )
+
+    // Refresh the view to show the new schedule
+    await fetchComparisons()
+
+    console.log(`Accepted adaptive block ${adaptiveBlock.timeBlockId}`)
+  } catch (error) {
+    console.error('Failed to accept adaptive block:', error)
+    alert('Failed to accept adaptive block. Please try again.')
+  }
+}
+
+// Reject an adaptive block (delete it)
+const rejectAdaptiveBlock = async (timeBlockId: string) => {
+  try {
+    if (!confirm('Are you sure you want to reject this adaptive schedule? This will remove it from your timeline.')) {
       return
     }
 
@@ -1281,10 +1369,33 @@ const deleteAdaptiveBlock = async (timeBlockId: string) => {
       block => block.timeBlockId !== timeBlockId
     )
 
-    console.log(`Deleted adaptive block ${timeBlockId}`)
+    console.log(`Rejected adaptive block ${timeBlockId}`)
   } catch (error) {
-    console.error('Failed to delete adaptive block:', error)
-    alert('Failed to delete adaptive block. Please try again.')
+    console.error('Failed to reject adaptive block:', error)
+    alert('Failed to reject adaptive block. Please try again.')
+  }
+}
+
+// Delete a schedule
+const deleteSchedule = async (taskId: string, timeBlockId: string) => {
+  try {
+    if (!confirm('Are you sure you want to delete this schedule? This will remove it from your timeline.')) {
+      return
+    }
+
+    // Delete from TaskCatalog (remove timeBlockId from task's timeBlockSet)
+    await TaskCatalogAPI.deleteSchedule(CURRENT_USER, taskId, timeBlockId)
+
+    // Delete from ScheduleTime (remove taskId from time block's taskIdSet, or delete time block if empty)
+    await ScheduleTimeAPI.removeTask(CURRENT_USER, taskId, timeBlockId)
+
+    // Refresh the view to show the updated state
+    await fetchComparisons()
+
+    console.log(`Deleted schedule: task ${taskId}, time block ${timeBlockId}`)
+  } catch (error) {
+    console.error('Failed to delete schedule:', error)
+    alert('Failed to delete schedule. Please try again.')
   }
 }
 
@@ -1403,7 +1514,9 @@ const fetchComparisons = async () => {
             category: task.category,
             varianceText: 'Perfect timing ✓',
             isDone: matchingSession.isDone, // Mark as done if session is completed
-            timeDeviationMs: 0
+            timeDeviationMs: 0,
+            taskId: taskId,
+            timeBlockId: timeBlock.timeBlockId
           })
         } else {
           // Check if there's a session for this task at a different time
@@ -1444,7 +1557,9 @@ const fetchComparisons = async () => {
                 category: task.category,
                 isDone: sessionForTask.isDone,
                 startTime: roundToNearest10Min(timeBlock.start),
-                endTime: roundToNearest10Min(timeBlock.end)
+                endTime: roundToNearest10Min(timeBlock.end),
+                taskId: taskId,
+                timeBlockId: timeBlock.timeBlockId
               },
               actual: {
                 timeRange: `${formatTime(sessionStart)} - ${formatTime(sessionEnd)}`,
@@ -1495,7 +1610,9 @@ const fetchComparisons = async () => {
                 varianceText,
                 isDone: anySessionForTask?.isDone || false,
                 startTime: roundedStart,
-                endTime: roundedEnd
+                endTime: roundedEnd,
+                taskId: taskId,
+                timeBlockId: timeBlock.timeBlockId
               },
               mismatchIcon: taskHasEnded ? '✕' : undefined,
               noActualText: 'No logged session, click to start logging'
@@ -1581,6 +1698,42 @@ const fetchComparisons = async () => {
     }
 
     stats.value.timeVariance = formatDuration(totalVarianceMs)
+
+    // 4. Fetch adaptive blocks for the current user
+    try {
+      console.log('Fetching adaptive blocks...')
+      const adaptiveBlocks = await AdaptiveScheduleAPI.getAdaptiveSchedule(CURRENT_USER)
+
+      // Filter adaptive blocks for the selected date
+      const filteredBlocks = adaptiveBlocks.filter(block => isOnSelectedDate(block.start))
+      console.log(`Fetched ${filteredBlocks.length} adaptive blocks for ${selectedDate.value}`)
+
+      // Fetch task details for each adaptive block
+      const blocksWithTasks: AdaptiveBlockWithTasks[] = []
+      for (const block of filteredBlocks) {
+        const blockTasks: Task[] = []
+        for (const taskId of block.taskIdSet) {
+          try {
+            const task = await TaskCatalogAPI.getTask(CURRENT_USER, taskId)
+            blockTasks.push(task)
+          } catch (error) {
+            console.error(`Failed to fetch task ${taskId} for adaptive block:`, error)
+          }
+        }
+        blocksWithTasks.push({
+          ...block,
+          tasks: blockTasks
+        })
+      }
+
+      // Store adaptive blocks
+      adaptiveBlocksWithTasks.value = blocksWithTasks
+      console.log(`Loaded ${blocksWithTasks.length} adaptive blocks with tasks`)
+    } catch (error: any) {
+      // If no adaptive blocks exist or error occurs, just set to empty array
+      console.log('No adaptive blocks found or error fetching:', error.message)
+      adaptiveBlocksWithTasks.value = []
+    }
 
   } catch (error) {
     console.error('Failed to fetch comparisons:', error)
@@ -2176,6 +2329,39 @@ onMounted(async () => {
   box-sizing: border-box;
 }
 
+.delete-schedule-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(220, 38, 38, 0.9);
+  color: white;
+  border: none;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  opacity: 0;
+  transition: all 0.2s ease;
+  line-height: 1;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.planned-task-slot:hover .delete-schedule-btn {
+  opacity: 1;
+}
+
+.delete-schedule-btn:hover {
+  background: rgba(220, 38, 38, 1);
+  transform: scale(1.1);
+}
+
 .actual-task-slot {
   position: absolute;
   padding: 0;
@@ -2246,7 +2432,8 @@ onMounted(async () => {
 
 /* Hide label for short tasks (30 min or less) */
 .planned-task.short-task::before,
-.actual-task.short-task::before {
+.actual-task.short-task::before,
+.task-perfect-match.short-task::before {
   display: none;
 }
 
@@ -2284,22 +2471,19 @@ onMounted(async () => {
   border: 1px solid rgba(255, 111, 97, 0.3);
 }
 
-.perfect-match-label {
-  background: #1A2A1A;
-  color: #4CAF50;
-  border: 1px solid rgba(76, 175, 80, 0.4);
-}
-
 .task-perfect-match {
   flex: 1;
   background: linear-gradient(135deg, #1A2A1A 0%, #2A3A2A 100%);
-  border: 2px solid #4CAF50;
+  border: 1.5px solid #4CAF50;
   border-radius: 8px;
   padding: 8px 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: all 0.3s ease;
   position: relative;
-  height: 100%; /* Fill the full height of task-comparison */
-  box-sizing: border-box; /* Include padding in height calculation */
-  margin: 0; /* No margin - height is exactly proportional to duration */
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -2307,20 +2491,28 @@ onMounted(async () => {
 }
 
 .task-perfect-match::before {
-  content: 'PERFECT MATCH ✓';
+  content: 'PERFECT MATCH';
   position: absolute;
   top: 6px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 8px;
   background: #1A2A1A;
   color: #4CAF50;
   font-size: 7px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.5px;
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 3px;
-  border: 1px solid #4CAF50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
   opacity: 0.7;
+}
+
+.task-perfect-match.short-task {
+  justify-content: center;
+}
+
+.task-perfect-match:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
 .planned-task:hover,
@@ -2572,31 +2764,54 @@ onMounted(async () => {
   box-sizing: border-box;
 }
 
-.delete-adaptive-block-btn {
+.adaptive-block-actions {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 24px;
-  height: 24px;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.adaptive-block-slot:hover .adaptive-block-actions {
+  opacity: 1;
+}
+
+.accept-adaptive-block-btn,
+.reject-adaptive-block-btn {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: rgba(220, 38, 38, 0.9);
   color: white;
   border: none;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10;
-  opacity: 0.7;
   transition: all 0.2s ease;
   line-height: 1;
   padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.delete-adaptive-block-btn:hover {
-  opacity: 1;
+.accept-adaptive-block-btn {
+  background: rgba(34, 197, 94, 0.9);
+}
+
+.accept-adaptive-block-btn:hover {
+  background: rgba(34, 197, 94, 1);
+  transform: scale(1.1);
+}
+
+.reject-adaptive-block-btn {
+  background: rgba(220, 38, 38, 0.9);
+}
+
+.reject-adaptive-block-btn:hover {
   background: rgba(220, 38, 38, 1);
   transform: scale(1.1);
 }
