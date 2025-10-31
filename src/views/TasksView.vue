@@ -84,6 +84,41 @@
                 </option>
               </select>
             </div>
+            <div class="filter-wrapper date-filter">
+              <span class="filter-icon">📅</span>
+              <div class="date-multi-select" @click.stop="toggleDateDropdown">
+                <span class="selected-dates-text">
+                  {{ filterDates.length === 0 ? 'All Dates' : `${filterDates.length} date${filterDates.length > 1 ? 's' : ''} selected` }}
+                </span>
+                <span class="dropdown-arrow">▼</span>
+              </div>
+              <div v-if="showDateDropdown" class="date-dropdown" @click.stop>
+                <div class="date-dropdown-header">
+                  <span>Select Scheduled Dates</span>
+                  <button v-if="filterDates.length > 0" @click="clearDateFilter" class="clear-dates-btn">
+                    Clear All
+                  </button>
+                </div>
+                <div v-if="uniqueScheduledDates.length === 0" class="no-dates">
+                  No scheduled dates available
+                </div>
+                <div v-else class="date-options">
+                  <label
+                    v-for="date in uniqueScheduledDates"
+                    :key="date"
+                    class="date-option"
+                  >
+                    <input
+                      type="checkbox"
+                      :value="date"
+                      :checked="filterDates.includes(date)"
+                      @change="toggleDateSelection(date)"
+                    />
+                    <span class="date-label">{{ formatDateDisplay(date) }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -136,7 +171,7 @@
               </div>
               <div v-if="task.deadline" class="detail-row">
                 <span class="detail-label">📅 Deadline:</span>
-                <span class="detail-value">{{ formatDate(task.deadline) }}</span>
+                <span class="detail-value">{{ formatDateTime(task.deadline) }}</span>
               </div>
               <div class="detail-row">
                 <span class="detail-label">✂️ Splittable:</span>
@@ -206,7 +241,7 @@
               </div>
               <div v-if="droppedTask.task.deadline" class="detail-row">
                 <span class="detail-label">Deadline:</span>
-                <span class="detail-value">{{ formatDate(droppedTask.task.deadline) }}</span>
+                <span class="detail-value">{{ formatDateTime(droppedTask.task.deadline) }}</span>
               </div>
             </div>
 
@@ -222,9 +257,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { AdaptiveScheduleAPI, TaskCatalogAPI, type DroppedTask, type Task } from '../services/api'
+import { AdaptiveScheduleAPI, TaskCatalogAPI, ScheduleTimeAPI, type DroppedTask, type Task, type TimeBlock } from '../services/api'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
@@ -247,11 +282,90 @@ const isLoadingTasks = ref(true)
 const searchQuery = ref('')
 const filterPriority = ref('')
 const filterCategory = ref('')
+const filterDates = ref<string[]>([])  // Array of selected date strings
+const showDateDropdown = ref(false)
+
+// Schedule data
+const allSchedules = ref<TimeBlock[]>([])
+
+// Date filter functions
+const toggleDateDropdown = () => {
+  showDateDropdown.value = !showDateDropdown.value
+}
+
+const toggleDateSelection = (date: string) => {
+  const index = filterDates.value.indexOf(date)
+  if (index === -1) {
+    filterDates.value.push(date)
+  } else {
+    filterDates.value.splice(index, 1)
+  }
+}
+
+const clearDateFilter = () => {
+  filterDates.value = []
+}
+
+// Close dropdown when clicking outside
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (!target.closest('.date-filter')) {
+    showDateDropdown.value = false
+  }
+}
+
+// Clean up event listener
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 // Computed: Get unique categories from all tasks
 const uniqueCategories = computed(() => {
   const categories = new Set(allTasks.value.map(task => task.category))
   return Array.from(categories).sort()
+})
+
+// Helper: Format date as YYYY-MM-DD
+const formatDate = (timestamp: number): string => {
+  const date = new Date(timestamp)
+  return date.toISOString().split('T')[0]
+}
+
+// Helper: Format date for display (e.g., "Mon, Jan 15")
+const formatDateDisplay = (dateStr: string): string => {
+  const date = new Date(dateStr + 'T00:00:00')
+  const options: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }
+  return date.toLocaleDateString('en-US', options)
+}
+
+// Computed: Get unique scheduled dates from all schedules
+const uniqueScheduledDates = computed(() => {
+  const dateSet = new Set<string>()
+
+  allSchedules.value.forEach(schedule => {
+    const dateStr = formatDate(schedule.start)
+    dateSet.add(dateStr)
+  })
+
+  // Sort dates chronologically
+  return Array.from(dateSet).sort()
+})
+
+// Computed: Map task IDs to their scheduled dates
+const taskScheduleDates = computed(() => {
+  const taskDatesMap = new Map<string, Set<string>>()
+
+  allSchedules.value.forEach(schedule => {
+    const dateStr = formatDate(schedule.start)
+    schedule.taskIdSet.forEach(taskId => {
+      if (!taskDatesMap.has(taskId)) {
+        taskDatesMap.set(taskId, new Set())
+      }
+      taskDatesMap.get(taskId)!.add(dateStr)
+    })
+  })
+
+  return taskDatesMap
 })
 
 // Computed: Filtered tasks based on search and filters
@@ -278,6 +392,17 @@ const filteredTasks = computed(() => {
     tasks = tasks.filter(task =>
       task.category === filterCategory.value
     )
+  }
+
+  // Apply date filter - only show tasks scheduled on selected dates
+  if (filterDates.value.length > 0) {
+    tasks = tasks.filter(task => {
+      const taskDates = taskScheduleDates.value.get(task.taskId)
+      if (!taskDates) return false  // Task has no schedules
+
+      // Check if any of the task's scheduled dates match the selected dates
+      return filterDates.value.some(selectedDate => taskDates.has(selectedDate))
+    })
   }
 
   return tasks
@@ -314,7 +439,7 @@ const navigateToTasks = () => {
 }
 
 // Format date helper
-const formatDate = (dateStr: string) => {
+const formatDateTime = (dateStr: string) => {
   const date = new Date(dateStr)
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
@@ -387,9 +512,23 @@ const deleteTask = async (task: Task, event: MouseEvent) => {
   }
 }
 
+// Fetch schedules
+const fetchSchedules = async () => {
+  try {
+    const schedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    allSchedules.value = schedules
+    console.log(`Fetched ${schedules.length} schedule blocks`)
+  } catch (error) {
+    console.error('Failed to fetch schedules:', error)
+    allSchedules.value = []
+  }
+}
+
 onMounted(() => {
   fetchAllTasks()
   fetchDroppedTasks()
+  fetchSchedules()
+  document.addEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -529,6 +668,8 @@ onMounted(() => {
   margin-bottom: 32px;
   flex-wrap: wrap;
   align-items: stretch;
+  position: relative;
+  z-index: 100;
 }
 
 .search-box {
@@ -589,6 +730,8 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   align-items: stretch;
+  position: relative;
+  z-index: 100;
 }
 
 .filter-wrapper {
@@ -680,6 +823,142 @@ onMounted(() => {
 
 .filter-select option:active {
   background: linear-gradient(135deg, rgba(255, 111, 97, 0.3) 0%, rgba(255, 111, 97, 0.2) 100%);
+}
+
+/* Date Filter Styles */
+.date-filter {
+  position: relative;
+  z-index: 200;
+}
+
+.date-multi-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  background: transparent;
+  cursor: pointer;
+  min-width: 180px;
+}
+
+.selected-dates-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F5E8D8;
+  transition: color 0.2s ease;
+}
+
+.date-multi-select:hover .selected-dates-text {
+  color: #FFFFFF;
+}
+
+.dropdown-arrow {
+  font-size: 10px;
+  color: rgba(245, 232, 216, 0.5);
+  transition: transform 0.3s ease, color 0.2s ease;
+}
+
+.date-filter:hover .dropdown-arrow {
+  color: rgba(245, 232, 216, 0.8);
+}
+
+.date-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 280px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  border: 2px solid rgba(245, 232, 216, 0.15);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.date-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 2px solid rgba(245, 232, 216, 0.1);
+  font-weight: 700;
+  font-size: 14px;
+  color: #FF6F61;
+}
+
+.clear-dates-btn {
+  background: rgba(255, 111, 97, 0.15);
+  border: 1px solid rgba(255, 111, 97, 0.3);
+  color: #FF6F61;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-dates-btn:hover {
+  background: rgba(255, 111, 97, 0.25);
+  border-color: rgba(255, 111, 97, 0.5);
+  transform: translateY(-1px);
+}
+
+.no-dates {
+  padding: 24px;
+  text-align: center;
+  color: rgba(245, 232, 216, 0.5);
+  font-size: 14px;
+}
+
+.date-options {
+  padding: 8px;
+}
+
+.date-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.date-option:hover {
+  background: rgba(245, 232, 216, 0.08);
+}
+
+.date-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #FF6F61;
+}
+
+.date-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #F5E8D8;
+  user-select: none;
+}
+
+.date-option:hover .date-label {
+  color: #FFFFFF;
 }
 
 .tasks-scrollable-container {
@@ -889,28 +1168,33 @@ onMounted(() => {
 }
 
 .task-priority.priority-1 {
-  background: rgba(255, 69, 0, 0.2);
-  color: #FF4500;
-  border: 1px solid rgba(255, 69, 0, 0.3);
+  background: rgba(153, 153, 153, 0.2);
+  color: #999;
+  border: 1px solid rgba(153, 153, 153, 0.3);
 }
 
 .task-priority.priority-2 {
+  background: rgba(244, 196, 48, 0.2);
+  color: #F4C430;
+  border: 1px solid rgba(244, 196, 48, 0.3);
+}
+
+.task-priority.priority-3 {
+  background: rgba(255, 140, 0, 0.2);
+  color: #FF8C00;
+  border: 1px solid rgba(255, 140, 0, 0.3);
+}
+
+.task-priority.priority-4 {
   background: rgba(255, 111, 97, 0.2);
   color: #FF6F61;
   border: 1px solid rgba(255, 111, 97, 0.3);
 }
 
-.task-priority.priority-3 {
-  background: rgba(218, 165, 32, 0.2);
-  color: #DAA520;
-  border: 1px solid rgba(218, 165, 32, 0.3);
-}
-
-.task-priority.priority-4,
 .task-priority.priority-5 {
-  background: rgba(170, 170, 170, 0.2);
-  color: #AAA;
-  border: 1px solid rgba(170, 170, 170, 0.3);
+  background: rgba(255, 61, 0, 0.2);
+  color: #FF3D00;
+  border: 1px solid rgba(255, 61, 0, 0.3);
 }
 
 .task-details {

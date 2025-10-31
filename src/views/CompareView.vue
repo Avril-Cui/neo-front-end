@@ -523,8 +523,8 @@ const getComparisonHeight = (comparison: Comparison) => {
 const getAdaptiveBlockHeight = (block: AdaptiveBlock) => {
   const durationMs = block.end - block.start
   const durationMinutes = durationMs / (1000 * 60)
-  // Return exact proportional height without extra padding
-  return (durationMinutes / 60) * HOUR_HEIGHT
+  // Return exact proportional height with 5px spacing subtracted
+  return Math.max((durationMinutes / 60) * HOUR_HEIGHT - 5, 20) // Minimum 20px height
 }
 
 // Helper function to parse duration strings to minutes
@@ -577,9 +577,16 @@ const roundToNearest10Min = (timestamp: number): number => {
 
 // Helper to calculate height with minimum of 20 minutes
 const calculateHeightWithMin = (startTime: number, endTime: number): number => {
-  const actualHeight = getComparisonPosition(endTime) - getComparisonPosition(startTime)
+  let actualHeight = getComparisonPosition(endTime) - getComparisonPosition(startTime)
+
+  // Handle midnight crossing: if end appears before start, it's on the next day
+  if (actualHeight < 0) {
+    actualHeight += 24 * HOUR_HEIGHT // Add 24 hours worth of pixels
+  }
+
   const minHeight = (20 / 60) * HOUR_HEIGHT // 20 minutes in pixels
-  return Math.max(actualHeight, minHeight)
+  const heightWithMargin = Math.max(actualHeight, minHeight) - 5 // Subtract 5px for spacing
+  return Math.max(heightWithMargin, minHeight) // Ensure we don't go below minimum height
 }
 
 // Helper function to parse duration strings to pixel height
@@ -1004,8 +1011,14 @@ const handleSidebarProceed = async () => {
 
     // Fetch all required data
     const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
-    const timeBlocks = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER).catch(() => [])
-    const sessions = await RoutineLogAPI.getUserSessions(CURRENT_USER).catch(() => [])
+    const allTimeBlocks = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER).catch(() => [])
+    const allSessions = await RoutineLogAPI.getUserSessions(CURRENT_USER).catch(() => [])
+
+    // Filter to only today's data
+    const timeBlocks = allTimeBlocks.filter(block => isTodayTimestamp(block.start))
+    const sessions = allSessions.filter(session => isSessionToday(session))
+
+    console.log(`AI Optimization (sidebar): Filtered to ${timeBlocks.length} time blocks and ${sessions.length} sessions for today`)
 
     // Create prompt
     const prompt = createAdaptiveSchedulePrompt(
@@ -1063,8 +1076,14 @@ const handlePreferenceProceed = async (preference: string) => {
 
     // Fetch all required data
     const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
-    const timeBlocks = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER).catch(() => [])
-    const sessions = await RoutineLogAPI.getUserSessions(CURRENT_USER).catch(() => [])
+    const allTimeBlocks = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER).catch(() => [])
+    const allSessions = await RoutineLogAPI.getUserSessions(CURRENT_USER).catch(() => [])
+
+    // Filter to only today's data
+    const timeBlocks = allTimeBlocks.filter(block => isTodayTimestamp(block.start))
+    const sessions = allSessions.filter(session => isSessionToday(session))
+
+    console.log(`AI Optimization (modal): Filtered to ${timeBlocks.length} time blocks and ${sessions.length} sessions for today`)
 
     // Create prompt
     const prompt = createAdaptiveSchedulePrompt(
@@ -1132,6 +1151,23 @@ const deleteAdaptiveBlock = async (timeBlockId: string) => {
 }
 
 // Helper to check if a timestamp is on the selected date
+// Helper to check if a timestamp is today
+const isTodayTimestamp = (timestamp: number): boolean => {
+  const date = new Date(timestamp)
+  const today = new Date()
+  return date.getFullYear() === today.getFullYear() &&
+         date.getMonth() === today.getMonth() &&
+         date.getDate() === today.getDate()
+}
+
+// Helper to check if a session is today
+const isSessionToday = (session: Session): boolean => {
+  if (!session.start) return false
+  const sessionDate = new Date(session.start)
+  return isTodayTimestamp(sessionDate.getTime())
+}
+
+// Helper to check if a timestamp matches the selected date
 const isOnSelectedDate = (timestamp: number): boolean => {
   const date = new Date(timestamp)
   const selected = currentDate.value
@@ -1282,25 +1318,29 @@ const fetchComparisons = async () => {
               mismatchIcon: '⚠️'
             })
           } else {
-            // Planned but not logged - count the entire planned duration as deviation
+            // Planned but not logged
+            const currentTime = Date.now()
+            const taskHasEnded = timeBlock.end < currentTime
             const plannedDuration = timeBlock.end - timeBlock.start
             const roundedStart = roundToNearest10Min(timeBlock.start)
             const roundedEnd = roundToNearest10Min(timeBlock.end)
+
+            // Only mark as "Skipped" if task has ended, otherwise just show as planned
             processedComparisons.push({
-              isMismatch: true,
+              isMismatch: taskHasEnded, // Only a mismatch if task has ended
               startTime: roundedStart,
               endTime: roundedEnd,
-              timeDeviationMs: plannedDuration,
+              timeDeviationMs: taskHasEnded ? plannedDuration : 0,
               planned: {
                 timeRange: `${formatTime(timeBlock.start)} - ${formatTime(timeBlock.end)}`,
                 taskName: task.taskName,
                 duration: formatDuration(plannedDuration),
                 category: task.category,
-                varianceText: 'Skipped',
+                varianceText: taskHasEnded ? 'Skipped' : undefined,
                 startTime: roundedStart,
                 endTime: roundedEnd
               },
-              mismatchIcon: '✕',
+              mismatchIcon: taskHasEnded ? '✕' : undefined,
               noActualText: 'No logged session, click to start logging'
             })
           }
@@ -1518,26 +1558,11 @@ const calculateOverlappingLayout = <T extends { startTime: number; endTime: numb
 
 // Calculate layouts for planned tasks
 const plannedTaskLayouts = computed(() => {
-  console.log('Total comparisons:', comparisons.value.length)
-  console.log('Comparisons sample:', comparisons.value.slice(0, 3))
-
   const plannedTasks = comparisons.value
     .filter(c => c.planned)
     .map(c => c.planned!)
 
-  console.log('Filtered planned tasks:', plannedTasks.length)
-  console.log('Planned tasks sample:', plannedTasks.slice(0, 3))
-
-  const layouts = calculateOverlappingLayout(plannedTasks)
-  console.log('Calculated layouts:', layouts.map(l => ({
-    start: l.startTime,
-    end: l.endTime,
-    width: l.layoutWidth,
-    left: l.layoutLeft,
-    column: l.layoutColumn
-  })))
-
-  return layouts
+  return calculateOverlappingLayout(plannedTasks)
 })
 
 // Calculate layouts for actual tasks
@@ -1560,7 +1585,7 @@ const adaptiveBlockLayouts = computed(() => {
 
 // Create comparisons with layouts attached
 const comparisonsWithPlannedLayout = computed(() => {
-  const result = comparisons.value.map(comparison => {
+  return comparisons.value.map(comparison => {
     if (!comparison.planned) return comparison
 
     const layout = plannedTaskLayouts.value.find(
@@ -1570,28 +1595,11 @@ const comparisonsWithPlannedLayout = computed(() => {
         layout.taskName === comparison.planned!.taskName
     )
 
-    console.log('Matching task:', comparison.planned?.taskName,
-      'start:', comparison.planned?.startTime,
-      'end:', comparison.planned?.endTime,
-      'found layout:', layout ? `width=${layout.layoutWidth} left=${layout.layoutLeft} col=${layout.layoutColumn}` : 'NOT FOUND')
-
-    const withLayout = {
+    return {
       ...comparison,
       plannedLayout: layout || { layoutWidth: 100, layoutLeft: 0 }
     }
-
-    // Debug logging
-    if (layout && (layout.layoutWidth !== 100 || layout.layoutLeft !== 0)) {
-      console.log('Planned task with overlap:', comparison.planned?.taskName, 'width:', layout.layoutWidth, 'left:', layout.layoutLeft)
-    }
-
-    return withLayout
   })
-
-  console.log('Total planned tasks:', result.filter(c => c.planned).length)
-  console.log('Planned layouts calculated:', plannedTaskLayouts.value.length)
-
-  return result
 })
 
 const comparisonsWithActualLayout = computed(() => {

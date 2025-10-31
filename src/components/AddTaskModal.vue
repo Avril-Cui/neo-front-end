@@ -760,28 +760,28 @@ const handleSubmit = () => {
 }
 
 .priority-option.lowest {
-  background: rgba(158, 158, 158, 0.1);
-  color: #9E9E9E;
+  background: rgba(153, 153, 153, 0.2);
+  color: #999;
 }
 
 .priority-option.low {
-  background: rgba(76, 175, 80, 0.1);
-  color: #4CAF50;
+  background: rgba(244, 196, 48, 0.2);
+  color: #F4C430;
 }
 
 .priority-option.medium {
-  background: rgba(121, 158, 255, 0.1);
-  color: #799EFF;
+  background: rgba(255, 140, 0, 0.2);
+  color: #FF8C00;
 }
 
 .priority-option.high {
-  background: rgba(218, 165, 32, 0.1);
-  color: #DAA520;
+  background: rgba(255, 111, 97, 0.2);
+  color: #FF6F61;
 }
 
 .priority-option.highest {
-  background: rgba(255, 111, 97, 0.1);
-  color: #FF6F61;
+  background: rgba(255, 61, 0, 0.2);
+  color: #FF3D00;
 }
 
 .priority-option.selected {

@@ -26,6 +26,7 @@ const startTime = ref(0)
 const elapsedTime = ref(0)
 const plannedDuration = ref(60) // minutes
 let timerInterval: number | null = null
+const has100PercentNotificationSent = ref(false) // Track if 100% notification was sent
 
 // Session state
 const currentSessionName = ref('Select a task')
@@ -40,6 +41,9 @@ const selectedPauseReason = ref('')
 // User tasks from API
 const userTasks = ref<Task[]>([])
 const isLoadingTasks = ref(false)
+
+// Schedule data
+const schedules = ref<any[]>([])
 
 // Current session tracking
 const currentSessionId = ref<string | null>(null)
@@ -89,6 +93,49 @@ const formatTime = (ms: number) => {
 
 const timerDisplay = computed(() => formatTime(elapsedTime.value))
 
+// Computed: Map tasks to their scheduled times
+const taskScheduleTimes = computed(() => {
+  const taskTimeMap = new Map<string, { start: number; end: number }>()
+
+  schedules.value.forEach(schedule => {
+    schedule.taskIdSet.forEach((taskId: string) => {
+      // Store the earliest scheduled time for each task
+      if (!taskTimeMap.has(taskId) || schedule.start < taskTimeMap.get(taskId)!.start) {
+        taskTimeMap.set(taskId, { start: schedule.start, end: schedule.end })
+      }
+    })
+  })
+
+  return taskTimeMap
+})
+
+// Helper: Get scheduled time for a task
+const getScheduledTime = (taskId: string): string | null => {
+  const scheduleTime = taskScheduleTimes.value.get(taskId)
+  if (!scheduleTime) return null
+
+  const formatTime = (timestamp: number): string => {
+    const date = new Date(timestamp)
+    const hours = date.getHours()
+    const minutes = date.getMinutes()
+    const ampm = hours >= 12 ? 'PM' : 'AM'
+    const displayHours = hours % 12 || 12
+    const displayMinutes = minutes.toString().padStart(2, '0')
+    return `${displayHours}:${displayMinutes} ${ampm}`
+  }
+
+  const formatDate = (timestamp: number): string => {
+    const date = new Date(timestamp)
+    const options: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }
+    return date.toLocaleDateString('en-US', options)
+  }
+
+  const dateStr = formatDate(scheduleTime.start)
+  const timeRange = `${formatTime(scheduleTime.start)} - ${formatTime(scheduleTime.end)}`
+
+  return `${dateStr} • ${timeRange}`
+}
+
 // Timer controls
 const startTimer = async () => {
   try {
@@ -98,35 +145,38 @@ const startTimer = async () => {
       return
     }
 
-    // If we don't already have a session ID, create one
-    if (!currentSessionId.value) {
-      console.log('Creating session:', {
-        owner: CURRENT_USER,
-        sessionName: currentSessionName.value,
-        linkedTaskId: selectedTaskId.value
-      })
+    // Always create a new session (don't reuse existing sessionId)
+    // This prevents issues with trying to start an already-active session
+    console.log('Creating session:', {
+      owner: CURRENT_USER,
+      sessionName: currentSessionName.value,
+      linkedTaskId: selectedTaskId.value
+    })
 
-      // 1. Create the session
-      const createParams: any = {
-        owner: CURRENT_USER,
-        sessionName: currentSessionName.value
-      }
-
-      // Only add linkedTaskId if a task was selected
-      if (selectedTaskId.value) {
-        createParams.linkedTaskId = selectedTaskId.value
-      }
-
-      const createResult = await RoutineLogAPI.createSession(createParams)
-      currentSessionId.value = createResult.session
-
-      console.log('Session created:', createResult.session)
-    } else {
-      console.log('Using existing session:', currentSessionId.value)
+    // 1. Create the session
+    const createParams: any = {
+      owner: CURRENT_USER,
+      sessionName: currentSessionName.value
     }
 
+    // Only add linkedTaskId if a task was selected
+    if (selectedTaskId.value) {
+      createParams.linkedTaskId = selectedTaskId.value
+    }
+
+    const createResult = await RoutineLogAPI.createSession(createParams)
+
+    // Extract the session ID from the returned session object
+    const sessionId = typeof createResult.session === 'string'
+      ? createResult.session
+      : (createResult.session as any)._id
+
+    currentSessionId.value = sessionId
+
+    console.log('Session created with ID:', sessionId)
+
     // 2. Start the session
-    await RoutineLogAPI.startSession(CURRENT_USER, { _id: currentSessionId.value })
+    await RoutineLogAPI.startSession(CURRENT_USER, { _id: sessionId })
 
     console.log('Session started:', currentSessionId.value)
 
@@ -134,13 +184,63 @@ const startTimer = async () => {
     isRunning.value = true
     isPaused.value = false
     startTime.value = Date.now() - elapsedTime.value
+    has100PercentNotificationSent.value = false // Reset notification flag for new session
 
     timerInterval = window.setInterval(() => {
       elapsedTime.value = Date.now() - startTime.value
+      checkAndSendProgressNotification()
     }, 100)
   } catch (error: any) {
     console.error('Failed to start session:', error)
     alert(`Failed to start session: ${error.message || 'Unknown error'}`)
+
+    // Clear the session ID so next attempt creates a new session
+    currentSessionId.value = null
+
+    // Stop the timer if it was started
+    isRunning.value = false
+    isPaused.value = false
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = null
+    }
+  }
+}
+
+// Check progress and send notification if 100% is reached
+const checkAndSendProgressNotification = () => {
+  // Check if progress has reached 100% and notification hasn't been sent yet
+  if (progressPercent.value >= 100 && !has100PercentNotificationSent.value) {
+    has100PercentNotificationSent.value = true
+    sendProgressNotification()
+  }
+}
+
+// Send browser notification for 100% progress
+const sendProgressNotification = () => {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const taskName = currentSessionName.value !== 'Select a task'
+      ? currentSessionName.value
+      : 'Current task'
+
+    new Notification('🎉 100% Progress Reached!', {
+      body: `You've completed the planned duration for "${taskName}". Great work!`,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: 'progress-100',
+      requireInteraction: false
+    })
+  }
+}
+
+// Request notification permission
+const requestNotificationPermission = async () => {
+  if ('Notification' in window && Notification.permission === 'default') {
+    try {
+      await Notification.requestPermission()
+    } catch (error) {
+      console.error('Failed to request notification permission:', error)
+    }
   }
 }
 
@@ -194,7 +294,7 @@ const confirmInterrupt = async () => {
     if (currentSessionId.value) {
       await RoutineLogAPI.interruptSession(
         CURRENT_USER,
-        currentSessionId.value,
+        { _id: currentSessionId.value },
         selectedPauseReason.value
       )
       console.log('Session interrupted:', currentSessionId.value, selectedPauseReason.value)
@@ -316,8 +416,10 @@ const hidePauseModal = () => {
 const fetchUserTasks = async () => {
   try {
     isLoadingTasks.value = true
-    userTasks.value = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
-    console.log('Fetched user tasks:', userTasks.value)
+    const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+    // Reverse the order to show most recently created tasks first
+    userTasks.value = [...tasks].reverse()
+    console.log('Fetched user tasks (most recent first):', userTasks.value)
   } catch (error: any) {
     console.error('Failed to fetch user tasks:', error)
     if (!error.message?.includes('No tasks found')) {
@@ -326,6 +428,17 @@ const fetchUserTasks = async () => {
     userTasks.value = []
   } finally {
     isLoadingTasks.value = false
+  }
+}
+
+// Fetch schedule data
+const fetchSchedules = async () => {
+  try {
+    schedules.value = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
+    console.log('Fetched schedules:', schedules.value)
+  } catch (error: any) {
+    console.error('Failed to fetch schedules:', error)
+    schedules.value = []
   }
 }
 
@@ -506,6 +619,10 @@ const resumeActiveSession = async (sessionLog: SessionLog) => {
     isRunning.value = true
     isPaused.value = session.isPaused
 
+    // Reset or set notification flag based on current progress
+    // If already past 100%, mark as sent to avoid duplicate notifications
+    const elapsedMinutes = Math.floor(elapsed / 60000)
+
     // If session has a linked task, get its duration
     if (session.linkedTaskId) {
       try {
@@ -521,12 +638,16 @@ const resumeActiveSession = async (sessionLog: SessionLog) => {
       taskInput.value = session.sessionName
     }
 
+    // Check if session already exceeded 100% to avoid duplicate notifications
+    has100PercentNotificationSent.value = elapsedMinutes >= plannedDuration.value
+
     // Start the timer interval
     if (timerInterval) {
       clearInterval(timerInterval)
     }
     timerInterval = window.setInterval(() => {
       elapsedTime.value = Date.now() - startTime.value
+      checkAndSendProgressNotification()
     }, 100)
 
     console.log('Resumed active session:', session.sessionName)
@@ -689,6 +810,8 @@ const pauseReasons = [
 onMounted(() => {
   fetchUserTasks()
   fetchUserSessions()
+  fetchSchedules()
+  requestNotificationPermission()
 })
 
 // Cleanup
@@ -780,7 +903,12 @@ onUnmounted(() => {
                 @mousedown="selectTaskFromSuggestions(task)"
               >
                 <div class="suggestion-main">
-                  <div class="suggestion-name">{{ task.taskName }}</div>
+                  <div class="suggestion-name">
+                    {{ task.taskName }}
+                    <span v-if="getScheduledTime(task.taskId)" class="scheduled-time-badge">
+                      {{ getScheduledTime(task.taskId) }}
+                    </span>
+                  </div>
                   <div class="suggestion-details">
                     {{ task.category }} • {{ task.duration }} min
                     <span v-if="task.deadline"> • Due: {{ new Date(task.deadline).toLocaleDateString() }}</span>
@@ -1178,6 +1306,18 @@ onUnmounted(() => {
   color: #daa520;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+.scheduled-time-badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 3px 8px;
+  margin-left: 8px;
+  border-radius: 4px;
+  background: rgba(255, 111, 97, 0.15);
+  color: #FF6F61;
+  font-weight: 500;
+  border: 1px solid rgba(255, 111, 97, 0.3);
 }
 
 .new-session-toggle {

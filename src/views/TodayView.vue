@@ -851,26 +851,29 @@ const calculateTaskLayouts = computed(() => {
         Loading schedule...
       </div>
 
-      <div class="today-stats">
-        <div class="stat-card">
-          <div class="stat-value">{{ stats.totalTasks }}</div>
-          <div class="stat-label">Total Tasks</div>
+      <div class="main-content-wrapper">
+        <!-- Stats Panel on the Left -->
+        <div class="today-stats">
+          <div class="stat-card">
+            <div class="stat-value">{{ stats.totalTasks }}</div>
+            <div class="stat-label">Total Tasks</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ stats.completed }}</div>
+            <div class="stat-label">Completed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ stats.focusedTime }}</div>
+            <div class="stat-label">Focused Time</div>
+          </div>
+          <div class="stat-card progress">
+            <div class="stat-value">{{ stats.progress }}%</div>
+            <div class="stat-label">Progress</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-value">{{ stats.completed }}</div>
-          <div class="stat-label">Completed</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">{{ stats.focusedTime }}</div>
-          <div class="stat-label">Focused Time</div>
-        </div>
-        <div class="stat-card progress">
-          <div class="stat-value">{{ stats.progress }}%</div>
-          <div class="stat-label">Progress</div>
-        </div>
-      </div>
 
-      <div class="timeline-wrapper" ref="timelineContainerRef">
+        <!-- Timeline on the Right -->
+        <div class="timeline-wrapper" ref="timelineContainerRef">
         <div class="timeline-container">
           <div class="time-axis">
             <div
@@ -959,6 +962,7 @@ const calculateTaskLayouts = computed(() => {
           </div>
         </div>
       </div>
+      </div> <!-- Close main-content-wrapper -->
     </div>
 
     <button class="add-button">+</button>
@@ -1179,33 +1183,43 @@ const calculateTaskLayouts = computed(() => {
   margin-bottom: 20px;
 }
 
+.main-content-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  /* width: 100%; */
+}
+
 .today-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 180px));
-  gap: 20px;
-  margin-bottom: 40px;
-  justify-content: center;
+  margin-top: 4em;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 200px;
+  max-width: 200px;
+  margin-right: 2em;
+  /* flex-shrink: 0; */
 }
 
 .stat-card {
   background: #2a2a2a;
   border-radius: 12px;
-  padding: 24px 20px;
+  padding: 20px 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   border: 1px solid #3a3a3a;
   text-align: center;
-  min-width: 140px;
+  width: 100%;
 }
 
 .stat-value {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
   color: #F5E8D8;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: 10px;
   color: #AAA;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -1223,13 +1237,12 @@ const calculateTaskLayouts = computed(() => {
 
 .timeline-wrapper {
   position: relative;
-  width: 100vw;
-  height: calc(100vh - 350px);
+  flex: 1;
+  height: calc(100vh - 200px);
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   justify-content: center;
-  margin-left: calc(-50vw + 50%);
 }
 
 .timeline-wrapper::-webkit-scrollbar {
@@ -1428,16 +1441,24 @@ const calculateTaskLayouts = computed(() => {
   background: var(--priority-color);
 }
 
+.task-card.highest-priority {
+  --priority-color: linear-gradient(180deg, #FF3D00 0%, #FF5722 100%);
+}
+
 .task-card.high-priority {
-  --priority-color: linear-gradient(180deg, #FF4500 0%, #FF6F61 100%);
+  --priority-color: linear-gradient(180deg, #FF6F61 0%, #FF8575 100%);
 }
 
 .task-card.medium-priority {
-  --priority-color: linear-gradient(180deg, #DAA520 0%, #FFD700 100%);
+  --priority-color: linear-gradient(180deg, #FF8C00 0%, #FFA500 100%);
 }
 
 .task-card.low-priority {
-  --priority-color: linear-gradient(180deg, #F5E8D8 0%, #E5D5C8 100%);
+  --priority-color: linear-gradient(180deg, #F4C430 0%, #FFD700 100%);
+}
+
+.task-card.lowest-priority {
+  --priority-color: linear-gradient(180deg, #999 0%, #BBB 100%);
 }
 
 .task-card.active {
@@ -1675,22 +1696,34 @@ const calculateTaskLayouts = computed(() => {
   line-height: 1.2;
 }
 
+.highest-priority .priority-badge {
+  background: rgba(255, 61, 0, 0.2);
+  color: #FF3D00;
+  border: 1px solid rgba(255, 61, 0, 0.3);
+}
+
 .high-priority .priority-badge {
-  background: rgba(255, 69, 0, 0.2);
+  background: rgba(255, 111, 97, 0.2);
   color: #FF6F61;
   border: 1px solid rgba(255, 111, 97, 0.3);
 }
 
 .medium-priority .priority-badge {
-  background: rgba(218, 165, 32, 0.2);
-  color: #DAA520;
-  border: 1px solid rgba(218, 165, 32, 0.3);
+  background: rgba(255, 140, 0, 0.2);
+  color: #FF8C00;
+  border: 1px solid rgba(255, 140, 0, 0.3);
 }
 
 .low-priority .priority-badge {
-  background: rgba(245, 232, 216, 0.1);
-  color: #F5E8D8;
-  border: 1px solid rgba(245, 232, 216, 0.2);
+  background: rgba(244, 196, 48, 0.2);
+  color: #F4C430;
+  border: 1px solid rgba(244, 196, 48, 0.3);
+}
+
+.lowest-priority .priority-badge {
+  background: rgba(153, 153, 153, 0.2);
+  color: #999;
+  border: 1px solid rgba(153, 153, 153, 0.3);
 }
 
 .task-progress {

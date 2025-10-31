@@ -235,8 +235,8 @@ export const RoutineLogAPI = {
     owner: string
     sessionName: string
     linkedTaskId?: string
-  }): Promise<{ session: string }> {
-    return apiCall<{ session: string }>('/api/RoutineLog/createSession', params)
+  }): Promise<{ session: Session | string }> {
+    return apiCall<{ session: Session | string }>('/api/RoutineLog/createSession', params)
   },
 
   async startSession(owner: string, session: any): Promise<void> {
