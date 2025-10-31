@@ -39,9 +39,8 @@ interface DisplayTask {
 // Real data from API
 const stats = ref({
   totalTasks: 0,
-  completed: 0,
-  focusedTime: '0h 0m',
-  progress: 0
+  highPriority: 0,
+  focusedTime: '0h 0m'
 })
 
 const tasks = ref<DisplayTask[]>([])
@@ -234,16 +233,19 @@ const fetchScheduleData = async () => {
 // Update statistics based on tasks
 const updateStats = () => {
   const total = tasks.value.length
-  const completed = tasks.value.filter(t => t.completed).length
   const totalMinutes = tasks.value.reduce((sum, t) => sum + t.duration, 0)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
 
+  // Count tasks with priority "High" or "Highest" (priority 4 or 5)
+  const highPriorityCount = tasks.value.filter(t =>
+    t.priority === 'High' || t.priority === 'Highest'
+  ).length
+
   stats.value = {
     totalTasks: total,
-    completed: completed,
-    focusedTime: `${hours}h ${minutes}m`,
-    progress: total > 0 ? Math.round((completed / total) * 100) : 0
+    highPriority: highPriorityCount,
+    focusedTime: `${hours}h ${minutes}m`
   }
 }
 
@@ -859,16 +861,12 @@ const calculateTaskLayouts = computed(() => {
             <div class="stat-label">Total Tasks</div>
           </div>
           <div class="stat-card">
-            <div class="stat-value">{{ stats.completed }}</div>
-            <div class="stat-label">Completed</div>
-          </div>
-          <div class="stat-card">
             <div class="stat-value">{{ stats.focusedTime }}</div>
-            <div class="stat-label">Focused Time</div>
+            <div class="stat-label">Focus Time</div>
           </div>
-          <div class="stat-card progress">
-            <div class="stat-value">{{ stats.progress }}%</div>
-            <div class="stat-label">Progress</div>
+          <div class="stat-card high-priority">
+            <div class="stat-value">{{ stats.highPriority }}</div>
+            <div class="stat-label">High Priority</div>
           </div>
         </div>
 
@@ -1226,12 +1224,12 @@ const calculateTaskLayouts = computed(() => {
   font-weight: 500;
 }
 
-.stat-card.progress {
+.stat-card.high-priority {
   border-color: #FF6F61;
   background: #2a2a2a;
 }
 
-.stat-card.progress .stat-value {
+.stat-card.high-priority .stat-value {
   color: #FF6F61;
 }
 

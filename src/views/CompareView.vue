@@ -143,8 +143,8 @@
             :style="{
               top: getComparisonPosition(adaptiveBlock.start) + 'px',
               height: getAdaptiveBlockHeight(adaptiveBlock) + 'px',
-              width: (adaptiveBlock.layoutWidth || 100) + '%',
-              left: 'calc(50% + 6px + ' + ((adaptiveBlock.layoutLeft || 0) / 2) + '%)'
+              width: 'calc((((100% - 100px) / 2) * ' + ((adaptiveBlock.layoutWidth || 100) / 100) + ') - 2px)',
+              left: 'calc(100px + (100% - 100px) / 2 + 2px + ((100% - 100px) / 2) * ' + ((adaptiveBlock.layoutLeft || 0) / 100) + ')'
             }"
           >
             <button
@@ -177,7 +177,9 @@
             >
               <div class="task-perfect-match">
                 <div class="task-title-inline">
-                  {{ comparison.taskName }} <span class="inline-label perfect-match-label">PERFECT MATCH</span>
+                  {{ comparison.taskName }}
+                  <span v-if="comparison.isDone" class="completed-badge" style="margin: 0 4px;">Completed</span>
+                  <span class="inline-label perfect-match-label">PERFECT MATCH</span>
                 </div>
               </div>
             </div>
@@ -206,7 +208,13 @@
                   <div class="task-title">{{ comparison.planned.taskName }}</div>
                   <div class="task-meta">
                     <span class="task-duration">{{ comparison.planned.duration }} • {{ comparison.planned.category }}</span>
-                    <span v-if="comparison.planned.varianceText" class="variance-badge" :class="{ 'skipped': comparison.planned.varianceText === 'Skipped' }">
+                    <span v-if="comparison.planned.isDone" class="completed-badge">
+                      Completed
+                    </span>
+                    <span v-if="comparison.planned.varianceText" class="variance-badge" :class="{
+                      'skipped': comparison.planned.varianceText === 'Skipped',
+                      'incomplete': comparison.planned.varianceText === 'Incomplete'
+                    }">
                       {{ comparison.planned.varianceText }}
                     </span>
                   </div>
@@ -238,6 +246,9 @@
                   <div class="task-title">{{ comparison.actual.taskName }}</div>
                   <div class="task-meta">
                     <span class="task-duration">{{ comparison.actual.duration }} • {{ comparison.actual.category }}</span>
+                    <span v-if="comparison.actual.isDone" class="completed-badge">
+                      Completed
+                    </span>
                     <span v-if="comparison.actual.varianceText" class="variance-badge">
                       {{ comparison.actual.varianceText }}
                     </span>
@@ -303,8 +314,8 @@
             <div class="spinner-container">
               <div class="spinner"></div>
             </div>
-            <p class="loading-text">Analyzing...</p>
-            <p class="loading-subtext">This may take a moment</p>
+            <p class="loading-text">AI Analyzing Your Data...</p>
+            <p class="loading-subtext">Optimizing schedule may take a moment</p>
           </div>
 
           <!-- Result State -->
@@ -630,6 +641,7 @@ interface Comparison {
   duration?: string
   category?: string
   varianceText?: string
+  isDone?: boolean   // Whether the routine was completed (for perfect match)
   startTime?: number  // For sorting and positioning
   endTime?: number    // For height calculation
   timeDeviationMs?: number  // Time deviation in milliseconds
@@ -639,6 +651,7 @@ interface Comparison {
     duration: string
     category: string
     varianceText?: string
+    isDone?: boolean   // Whether the linked routine was completed
     startTime: number  // Actual timestamp
     endTime: number    // Actual timestamp
   }
@@ -648,6 +661,7 @@ interface Comparison {
     duration: string
     category: string
     varianceText?: string
+    isDone?: boolean   // Whether the session was completed
     startTime: number  // Actual timestamp
     endTime: number    // Actual timestamp
   }
@@ -861,7 +875,8 @@ const closePreferenceModal = () => {
 
 const createAdaptiveSchedulePrompt = (
   owner: string,
-  tasks: Task[],
+  all_tasks: Task[],
+  tasks_to_schedule: Task[],
   timeBlocks: TimeBlock[],
   sessions: Session[],
   preference: string
@@ -870,6 +885,9 @@ const createAdaptiveSchedulePrompt = (
 
   // Helper to format tasks
   const tasksToString = (tasks: Task[]) => {
+    if (tasks.length === 0) {
+      return "No tasks to schedule - all tasks are completed!"
+    }
     return tasks.map(t => {
       let taskStr = `- Task ID: ${t.taskId}\n`
       taskStr += `  Name: ${t.taskName}\n`
@@ -903,6 +921,31 @@ const createAdaptiveSchedulePrompt = (
     }).join('\n')
   }
 
+  // Check if there are no tasks to schedule
+  if (tasks_to_schedule.length === 0) {
+    return `
+You are a helpful AI assistant that creates optimal adaptive schedules for users.
+
+USER: ${owner}
+CURRENT TIME: ${currentTime}
+
+ALL TASKS FOR TODAY:
+${tasksToString(all_tasks)}
+
+TASKS TO SCHEDULE (Incomplete or Skipped):
+${tasksToString(tasks_to_schedule)}
+
+** NOTICE: There are no tasks that need rescheduling. All planned tasks have been completed! **
+
+Return your response as a JSON object with this exact structure:
+{
+  "analysis": "Great news! You've completed all your planned tasks for today. There's nothing left to reschedule, which means you're staying on track with your goals. Keep up the excellent work!",
+  "adaptiveBlocks": [],
+  "droppedTaskIds": []
+}
+`
+  }
+
   return `
 You are a helpful AI assistant that creates optimal adaptive schedules for users based on task analysis, planned schedules, actual routines, and user preferences.
 
@@ -913,9 +956,13 @@ CURRENT TIME: ${currentTime}
 USER PREFERENCES:
 ${preference}
 
-TASKS TO SCHEDULE:
-** CRITICAL: ALL tasks listed below MUST be scheduled. Each task represents work that still needs to be done. **
-${tasksToString(tasks)}
+ALL TASKS FOR TODAY (For Context):
+** This is the complete list of all tasks planned for today. Use this for understanding the full scope of the day's work. **
+${tasksToString(all_tasks)}
+
+TASKS TO SCHEDULE (Incomplete or Skipped):
+** CRITICAL: ONLY these tasks need to be scheduled. These are tasks that were either skipped (not attempted) or incomplete (started but not finished). Tasks marked as completed are NOT included here and should NOT be scheduled. **
+${tasksToString(tasks_to_schedule)}
 
 PLANNED SCHEDULE (Original Plan):
 ${scheduleToString(timeBlocks)}
@@ -954,9 +1001,10 @@ SCHEDULING CONSTRAINTS:
 - **MANDATORY: You MUST ALWAYS create overlapping/concurrent blocks for passive tasks (laundry, dishwashing, etc.). This means creating separate blocks with the same or overlapping time ranges. For example, if you have laundry and studying, ALWAYS create two blocks that overlap in time - NEVER schedule passive tasks sequentially. This is required even if you have enough time, as it frees up time for additional tasks.**
 
 CRITICAL REQUIREMENTS:
-1. ONLY schedule the tasks listed above - do NOT add any new tasks
-2. Ensure all scheduled blocks have valid ISO timestamps
-3. Assign tasks based on priority and deadline urgency
+1. ONLY schedule the tasks listed in "TASKS TO SCHEDULE" section - these are incomplete or skipped tasks
+2. Do NOT schedule tasks from "ALL TASKS FOR TODAY" that are not in "TASKS TO SCHEDULE"
+3. Ensure all scheduled blocks have valid ISO timestamps
+4. Assign tasks based on priority and deadline urgency
 4. **ABSOLUTE DEADLINE CONSTRAINT: If a task has a deadline, it MUST be completed BEFORE that deadline. Do NOT schedule any part of the task after its deadline.**
 5. **If there is insufficient time to complete all tasks before their deadlines, prioritize higher priority tasks first**
 6. **DURATION CONSTRAINT (FLEXIBLE WHEN CONSTRAINED): Ideally give each task its FULL required duration. However, when time is severely constrained and you have leftover time that can't fit a full task, it's acceptable to schedule a partial task duration rather than leaving the time empty. For example, if you have 20 minutes left and a 60-minute task, schedule it for 20 minutes rather than dropping it entirely.**
@@ -967,7 +1015,7 @@ CRITICAL REQUIREMENTS:
 
 Return your response as a JSON object with this exact structure:
 {
-  "analysis": "Brief analysis of why the schedule deviated from the routine and key insights",
+  "analysis": "Provide a clear, simplified, and human-readable analysis explaining your scheduling decisions. Write in plain language (avoid technical jargon) and explain: (1) Why you scheduled tasks in this order, (2) How you prioritized tasks based on deadlines and priorities, (3) Any tasks you had to drop and why, (4) Any time-saving strategies you used (like concurrent scheduling). Keep it concise but informative - aim for 3-5 sentences that a non-technical user can easily understand.",
   "adaptiveBlocks": [
     {
       "start": "ISO timestamp",
@@ -1000,17 +1048,12 @@ Return ONLY the JSON object, no additional text.`
 }
 
 const handleSidebarProceed = async () => {
-  if (!userPreference.value.trim()) {
-    alert('Please enter your schedule preference')
-    return
-  }
-
   try {
     // Show loading state in sidebar
     sidebarState.value = 'loading'
 
     // Fetch all required data
-    const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+    const allTasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
     const allTimeBlocks = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER).catch(() => [])
     const allSessions = await RoutineLogAPI.getUserSessions(CURRENT_USER).catch(() => [])
 
@@ -1020,10 +1063,56 @@ const handleSidebarProceed = async () => {
 
     console.log(`AI Optimization (sidebar): Filtered to ${timeBlocks.length} time blocks and ${sessions.length} sessions for today`)
 
+    // Get all task IDs that are scheduled in today's time blocks
+    const todayTaskIds = new Set<string>()
+    timeBlocks.forEach(block => {
+      block.taskIdSet.forEach(taskId => todayTaskIds.add(taskId))
+    })
+
+    // Filter tasks to only those scheduled today
+    const tasks = allTasks.filter(task => todayTaskIds.has(task.taskId))
+
+    console.log(`Filtered from ${allTasks.length} total tasks to ${tasks.length} tasks scheduled today`)
+
+    // Debug: Log all sessions for today
+    console.log('=== All sessions for today ===')
+    sessions.forEach(s => {
+      console.log(`Session: ${s.sessionName}, linkedTaskId: ${s.linkedTaskId}, isDone: ${s.isDone}, start: ${s.start}, end: ${s.end}`)
+    })
+
+    // Debug: Log all tasks for today
+    console.log('=== All tasks scheduled today ===')
+    tasks.forEach(t => {
+      console.log(`Task: ${t.taskName} (${t.taskId})`)
+    })
+
+    // Filter tasks to only include incomplete or skipped ones
+    const tasksToSchedule = tasks.filter(task => {
+      // Find if this task has a completed session
+      const sessionForTask = sessions.find(s => s.linkedTaskId === task.taskId && s.start && s.end)
+
+      console.log(`\nChecking task: ${task.taskName} (${task.taskId})`)
+      console.log(`  - Found session: ${sessionForTask ? sessionForTask.sessionName : 'NO SESSION'}`)
+      if (sessionForTask) {
+        console.log(`  - Session isDone: ${sessionForTask.isDone}`)
+        console.log(`  - Session start: ${sessionForTask.start}`)
+        console.log(`  - Session end: ${sessionForTask.end}`)
+      }
+
+      // Include task if: no session exists (skipped) OR session exists but not completed (incomplete)
+      const shouldInclude = !sessionForTask || !sessionForTask.isDone
+      console.log(`  - Should include in tasks_to_schedule: ${shouldInclude}`)
+
+      return shouldInclude
+    })
+
+    console.log(`\nAI Optimization: ${tasks.length} total tasks, ${tasksToSchedule.length} need scheduling (incomplete/skipped)`)
+
     // Create prompt
     const prompt = createAdaptiveSchedulePrompt(
       CURRENT_USER,
       tasks,
+      tasksToSchedule,
       timeBlocks,
       sessions,
       userPreference.value
@@ -1075,7 +1164,7 @@ const handlePreferenceProceed = async (preference: string) => {
     showLoadingModal.value = true
 
     // Fetch all required data
-    const tasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+    const allTasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
     const allTimeBlocks = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER).catch(() => [])
     const allSessions = await RoutineLogAPI.getUserSessions(CURRENT_USER).catch(() => [])
 
@@ -1085,10 +1174,56 @@ const handlePreferenceProceed = async (preference: string) => {
 
     console.log(`AI Optimization (modal): Filtered to ${timeBlocks.length} time blocks and ${sessions.length} sessions for today`)
 
+    // Get all task IDs that are scheduled in today's time blocks
+    const todayTaskIds = new Set<string>()
+    timeBlocks.forEach(block => {
+      block.taskIdSet.forEach(taskId => todayTaskIds.add(taskId))
+    })
+
+    // Filter tasks to only those scheduled today
+    const tasks = allTasks.filter(task => todayTaskIds.has(task.taskId))
+
+    console.log(`Filtered from ${allTasks.length} total tasks to ${tasks.length} tasks scheduled today`)
+
+    // Debug: Log all sessions for today
+    console.log('=== All sessions for today (modal) ===')
+    sessions.forEach(s => {
+      console.log(`Session: ${s.sessionName}, linkedTaskId: ${s.linkedTaskId}, isDone: ${s.isDone}, start: ${s.start}, end: ${s.end}`)
+    })
+
+    // Debug: Log all tasks for today
+    console.log('=== All tasks scheduled today (modal) ===')
+    tasks.forEach(t => {
+      console.log(`Task: ${t.taskName} (${t.taskId})`)
+    })
+
+    // Filter tasks to only include incomplete or skipped ones
+    const tasksToSchedule = tasks.filter(task => {
+      // Find if this task has a completed session
+      const sessionForTask = sessions.find(s => s.linkedTaskId === task.taskId && s.start && s.end)
+
+      console.log(`\nChecking task (modal): ${task.taskName} (${task.taskId})`)
+      console.log(`  - Found session: ${sessionForTask ? sessionForTask.sessionName : 'NO SESSION'}`)
+      if (sessionForTask) {
+        console.log(`  - Session isDone: ${sessionForTask.isDone}`)
+        console.log(`  - Session start: ${sessionForTask.start}`)
+        console.log(`  - Session end: ${sessionForTask.end}`)
+      }
+
+      // Include task if: no session exists (skipped) OR session exists but not completed (incomplete)
+      const shouldInclude = !sessionForTask || !sessionForTask.isDone
+      console.log(`  - Should include in tasks_to_schedule: ${shouldInclude}`)
+
+      return shouldInclude
+    })
+
+    console.log(`\nAI Optimization (modal): ${tasks.length} total tasks, ${tasksToSchedule.length} need scheduling (incomplete/skipped)`)
+
     // Create prompt
     const prompt = createAdaptiveSchedulePrompt(
       CURRENT_USER,
       tasks,
+      tasksToSchedule,
       timeBlocks,
       sessions,
       preference
@@ -1264,6 +1399,7 @@ const fetchComparisons = async () => {
             duration: formatDuration(timeBlock.end - timeBlock.start),
             category: task.category,
             varianceText: 'Perfect timing ✓',
+            isDone: matchingSession.isDone, // Mark as done if session is completed
             timeDeviationMs: 0
           })
         } else {
@@ -1303,6 +1439,7 @@ const fetchComparisons = async () => {
                 taskName: task.taskName,
                 duration: formatDuration(plannedDuration),
                 category: task.category,
+                isDone: sessionForTask.isDone,
                 startTime: roundToNearest10Min(timeBlock.start),
                 endTime: roundToNearest10Min(timeBlock.end)
               },
@@ -1312,20 +1449,36 @@ const fetchComparisons = async () => {
                 duration: formatDuration(actualDuration),
                 category: task.category,
                 varianceText,
+                isDone: sessionForTask.isDone,
                 startTime: roundToNearest10Min(sessionStart),
                 endTime: roundToNearest10Min(sessionEnd)
               },
               mismatchIcon: '⚠️'
             })
           } else {
-            // Planned but not logged
+            // Planned but not logged at correct time
             const currentTime = Date.now()
             const taskHasEnded = timeBlock.end < currentTime
             const plannedDuration = timeBlock.end - timeBlock.start
             const roundedStart = roundToNearest10Min(timeBlock.start)
             const roundedEnd = roundToNearest10Min(timeBlock.end)
 
-            // Only mark as "Skipped" if task has ended, otherwise just show as planned
+            // Check if there's ANY session for this task (at any time, regardless of completion)
+            const anySessionForTask = userSessions.find(s => s.linkedTaskId === taskId && s.start && s.end)
+
+            // Determine variance text:
+            // - If has session but not completed -> "Incomplete"
+            // - If no session at all -> "Skipped"
+            // - If task hasn't ended yet -> undefined (just planned)
+            let varianceText: string | undefined
+            if (taskHasEnded) {
+              if (anySessionForTask) {
+                varianceText = anySessionForTask.isDone ? undefined : 'Incomplete'
+              } else {
+                varianceText = 'Skipped'
+              }
+            }
+
             processedComparisons.push({
               isMismatch: taskHasEnded, // Only a mismatch if task has ended
               startTime: roundedStart,
@@ -1336,7 +1489,8 @@ const fetchComparisons = async () => {
                 taskName: task.taskName,
                 duration: formatDuration(plannedDuration),
                 category: task.category,
-                varianceText: taskHasEnded ? 'Skipped' : undefined,
+                varianceText,
+                isDone: anySessionForTask?.isDone || false,
                 startTime: roundedStart,
                 endTime: roundedEnd
               },
@@ -1395,6 +1549,7 @@ const fetchComparisons = async () => {
             duration: formatDuration(actualDuration),
             category: category || 'Ad-hoc',
             varianceText: 'Unplanned',
+            isDone: session.isDone,
             startTime: roundedStart,
             endTime: roundedEnd
           },
@@ -2350,6 +2505,22 @@ onMounted(async () => {
 .variance-badge.skipped {
   color: #FF6F61;
   background: rgba(255, 111, 97, 0.15);
+}
+
+.variance-badge.incomplete {
+  color: #FFD700;
+  background: rgba(255, 215, 0, 0.15);
+}
+
+.completed-badge {
+  font-size: 8px;
+  font-weight: 600;
+  color: #4CAF50;
+  background: rgba(76, 175, 80, 0.15);
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .variance-text {
