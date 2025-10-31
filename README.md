@@ -8,6 +8,7 @@ Click on the image below, and you will get redirected to a youtube video.
 
 # Visual design study
 ![VS1](visual/VS1.png)
+
 ![VS2](visual/VS2.png)
 
 # Styling and layout
@@ -18,22 +19,22 @@ Click on the image below, and you will get redirected to a youtube video.
 ![record_palse_ui](visual/record_palse_ui.png)
 
 # User Journey
-## One-paragraph version
-Friday, a product manager at Microsoft, starts his Tuesday with a perfectly organized schedule in Notion Calendar, balancing meetings, roadmap planning, and focus work. But by mid-afternoon, his plan collapses after three ad-hoc meetings, two urgent pings, and a new task from his lead push all his focus work aside. Frustrated, Friday turns to Neo, a scheduling tool that adapts to reality. He adds his remaining tasks—“Write Product Spec,” “Team Sync,” and “Review Customer Feedback”—assigns priorities, and views an updated timeline showing what’s left for the day. When an urgent engineering call interrupts his “Write Product Spec” session, Neo logs the cause and later helps him optimize his schedule, automatically rescheduling non-critical work and prioritizing deadlines. By evening, the compare page shows which plans held, which shifted, and how his time was reallocated. Instead of guilt, Friday feels clarity: Neo turns disruption into insight, helping him finish his most important work and plan more realistically over time.
+Friday, a product manager at Microsoft, starts his Tuesday with a perfectly organized schedule in Notion Calendar, balancing meetings, roadmap planning, and focus work. But by mid-afternoon, his plan collapses after three ad-hoc meetings, two urgent pings, and a new task from his lead, pushing all his focus work aside. Frustrated, Friday turns to Neo, a scheduling tool that adapts to reality. He adds his remaining tasks—“Write Product Spec,” “Team Sync,” and “Review Customer Feedback”—assigns priorities and other task related attributes, then views an updated timeline showing what’s left for the day. Friday then goes to the session page, and Neo then starts logging the session progress for “Write Product Spec.” When an urgent engineering call interrupts his “Write Product Spec” session, Neo logs the interruption cause and later helps him adaptively optimize his future schedule, automatically rescheduling non-critical work and prioritizing deadlines. By evening, the compare page shows which plans held, which shifted, and how his time was reallocated. Instead of guilt, Friday feels clarity: Neo turns disruption into insight, helping him finish his most important work and plan more realistically over time. Friday learns about his own focus pattern, energy cycles, and work habits. Most importantly, Neo's adaptive calendar helps him finished most of his high-priority tasks. Over time, Friday builds more realistic schedules and feels more effective as a busy product manager.
 
-## Original, detailed version
-Friday is a Productivist. As a product manager at Microsoft, Friday balances cross-team meetings, roadmap planning, and individual focus work every day. To stay on top of everything, Friday creates detailed schedules of his daily plan in Notion Calendar, and asks his colleagues and clients to book meetings through this platform too.
+# Running the app
 
-However, this Tuesday afternoon is not the first time Friday realizes his ambitious and organized schedule of the day collapsed -- after three ad-hoc meetings (two of which run long), two urgent pings from his colleagues, and one new task from his lead. His focus work gets completely postponed, and he is uncertain whether he can still finish his tasks on time. At that moment, Friday decides to try Neo, a scheduling tool that flexes with reality, helping him navigate the overwhelming situation of planned schedules not matching the reality, making schedules more adaptive and effective.
+1. Install dependencies:
+```bash
+npm install
+```
 
-Using the Add Task panel, Friday quickly enters his remaining tasks for the day, including "Write Product Spec," "Team Sync," and "Review Customer Feedback." He assigned each task a priority, duration, and category, and allocates these task blocks onto the timeline. For “Write Product Spec,” Friday sets a hard deadline and allows it to be splittable across multiple sessions.
+2. Start the development server:
+```bash
+npm run dev
+```
 
-On the Today page, Friday sees a simple and intuitive timeline that shows what he is expected to work on for the remainder of the day. The page shows him meetings in fixed slots, focus tasks filling open time, and color-coded priorities.
+3. Make sure to call `deno task concepts` in the backend directory to start the backend API before running the frontend.
 
-When Friday begins a session on "Writing Product Spec," he opens the Record Session, chooses the "Writing Product Spec" task, and clicks on the start session button. Halfway through finishing his work, he gets interrupted by an urgent call from the engineering team. Friday pauses the session and logs the cause using the Pause Session interface, selecting "Interruption — Call/Meeting." This not only pauses the timer but feeds Neo data about interruptions, helping future planning.
+4. Open your browser and navigate to `http://localhost:5173`
 
-By afternoon, Friday looks at the compare interface and notices that too many interruptions have piled up, and it is clear from the dashboard that not all of his planned tasks can be completed. Instead of scrambling or feeling overwhelmed, Friday clicks the Optimize Schedule button on the compare page. Neo adaptively and automatically reschedules the remaining timeline, pushing non-critical tasks into tomorrow, while prioritizing hard deadlines and high-priority work for the rest of the day. Neo also learns from Friday's logged sessions through out the day, analyses his focus pattern and energy cycle, and suggests short breaks to boost Friday's overall productivity. This gives Friday confidence that the most important outcomes will still be achieved.
-
-At the end of the day, Friday revisits the compare page. The timeline shows what matched perfectly in green, what deviated in red, and what got dynamically rescheduled in grey. Instead of feeling guilty about unfinished items, Friday sees a rationalized schedule where the most important tasks were accomplished despite interruptions.
-
-Neo reframes deviations as learning opportunities. For Friday, this means ending the day with clarity rather than guilt. He learns about his own focus pattern, energy cycles, and work habits. Most importantly, Neo helps him finished most of his high-priority tasks. Over time, Friday builds more realistic schedules and feels more effective as a busy product manager.
+The frontend will automatically reload when you make changes to the code.
