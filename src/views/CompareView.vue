@@ -380,6 +380,9 @@ const formatTime = (timestamp: number): string => {
 // Helper to format duration in minutes
 const formatDuration = (milliseconds: number): string => {
   const totalMinutes = Math.floor(milliseconds / (1000 * 60))
+  if (totalMinutes === 0) {
+    return '0h 0m'
+  }
   if (totalMinutes < 60) {
     return `${totalMinutes} minutes`
   }
@@ -457,7 +460,7 @@ const stats = ref({
   totalTasks: 0,
   perfectMatch: 0,
   mismatched: 0,
-  timeVariance: '0m'
+  timeVariance: '0h 0m'
 })
 
 // Timeline constants - optimized for 1-hour task fitting with padding
