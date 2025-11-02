@@ -1155,14 +1155,14 @@ const calculateTaskLayouts = computed(() => {
                 <span class="detail-value">{{ hoveredTaskDetails.splittable ? 'Yes' : 'No' }}</span>
               </div>
 
-              <div v-if="hoveredTaskDetails.deadline" class="detail-row">
+              <div class="detail-row">
                 <span class="detail-label">Deadline:</span>
-                <span class="detail-value">{{ new Date(hoveredTaskDetails.deadline).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) }}</span>
+                <span class="detail-value">{{ hoveredTaskDetails.deadline ? new Date(hoveredTaskDetails.deadline).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'None' }}</span>
               </div>
 
-              <div v-if="hoveredTaskDetails.slack !== undefined && hoveredTaskDetails.slack > 0" class="detail-row">
-                <span class="detail-label">Slack Time:</span>
-                <span class="detail-value">{{ hoveredTaskDetails.slack }} minutes</span>
+              <div class="detail-row">
+                <span class="detail-label">Buffer Time:</span>
+                <span class="detail-value">{{ hoveredTaskDetails.slack !== undefined && hoveredTaskDetails.slack > 0 ? hoveredTaskDetails.slack + ' minutes' : 'None' }}</span>
               </div>
 
               <div class="detail-row">
