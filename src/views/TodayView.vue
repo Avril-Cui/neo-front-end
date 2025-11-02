@@ -58,26 +58,29 @@ const formatDisplayDate = (date: Date) => {
 }
 
 // Navigation functions
-const goToPreviousDay = () => {
+const goToPreviousDay = async () => {
   const newDate = new Date(currentDate.value)
   newDate.setDate(newDate.getDate() - 1)
   currentDate.value = newDate
   selectedDate.value = formatDisplayDate(newDate)
-  fetchScheduleData()
+  await fetchScheduleData()
+  scheduleTaskNotifications()
 }
 
-const goToToday = () => {
+const goToToday = async () => {
   currentDate.value = getCurrentDate()
   selectedDate.value = formatDisplayDate(currentDate.value)
-  fetchScheduleData()
+  await fetchScheduleData()
+  scheduleTaskNotifications()
 }
 
-const goToNextDay = () => {
+const goToNextDay = async () => {
   const newDate = new Date(currentDate.value)
   newDate.setDate(newDate.getDate() + 1)
   currentDate.value = newDate
   selectedDate.value = formatDisplayDate(newDate)
-  fetchScheduleData()
+  await fetchScheduleData()
+  scheduleTaskNotifications()
 }
 
 // Check if current date is today
@@ -221,10 +224,12 @@ const fetchScheduleData = async () => {
     console.log('📊 Total display tasks created:', displayTasks.length)
     tasks.value = displayTasks
     updateStats()
+    scheduleTaskNotifications()
   } catch (error: any) {
     console.error('❌ Failed to fetch schedule:', error)
     tasks.value = []
     updateStats()
+    scheduleTaskNotifications()
   } finally {
     isLoading.value = false
   }
@@ -267,8 +272,44 @@ const hoveredHour = ref<number | null>(null)
 // Track hovered task for delete button
 const hoveredTaskId = ref<string | null>(null)
 
+// Track hovered task for details panel
+const hoveredTaskDetails = ref<Task | null>(null)
+const isLoadingTaskDetails = ref(false)
+const preDependencyTasks = ref<Task[]>([])
+
 const setHoveredTask = (taskId: string | null) => {
   hoveredTaskId.value = taskId
+}
+
+// Load full task details when hovering
+const loadTaskDetails = async (displayTask: DisplayTask) => {
+  try {
+    isLoadingTaskDetails.value = true
+    const fullTask = await TaskCatalogAPI.getTask(CURRENT_USER, displayTask.taskId)
+    hoveredTaskDetails.value = fullTask
+
+    // Load pre-dependency tasks if they exist
+    if (fullTask.preDependence && fullTask.preDependence.length > 0) {
+      const preDeps = await Promise.all(
+        fullTask.preDependence.map(depId => TaskCatalogAPI.getTask(CURRENT_USER, depId))
+      )
+      preDependencyTasks.value = preDeps
+    } else {
+      preDependencyTasks.value = []
+    }
+  } catch (error: any) {
+    console.error('Failed to load task details:', error)
+    hoveredTaskDetails.value = null
+    preDependencyTasks.value = []
+  } finally {
+    isLoadingTaskDetails.value = false
+  }
+}
+
+const clearTaskDetails = () => {
+  hoveredTaskDetails.value = null
+  preDependencyTasks.value = []
+  isLoadingTaskDetails.value = false
 }
 
 // Generate hour chunks (24 hours) - 200px per hour for more space
@@ -464,6 +505,13 @@ const handleTaskUpdate = async (taskData: any) => {
       taskData.notes ? TaskCatalogAPI.updateTaskNote(CURRENT_USER, taskData.taskId, taskData.notes) : Promise.resolve(),
     ])
 
+    // Add pre-dependencies if any were selected
+    if (taskData.preDependencies && taskData.preDependencies.length > 0) {
+      for (const preDependencyId of taskData.preDependencies) {
+        await TaskCatalogAPI.addPreDependence(CURRENT_USER, taskData.taskId, preDependencyId)
+      }
+    }
+
     console.log('Task updated successfully')
 
     // Reset edit mode
@@ -508,6 +556,13 @@ const handleTaskSubmit = async (taskData: any) => {
       ...(taskData.slack && taskData.slack > 0 && { slack: taskData.slack }),
       ...(taskData.notes && { note: taskData.notes })
     })
+
+    // Add pre-dependencies if any were selected
+    if (taskData.preDependencies && taskData.preDependencies.length > 0) {
+      for (const preDependencyId of taskData.preDependencies) {
+        await TaskCatalogAPI.addPreDependence(CURRENT_USER, newTask.taskId, preDependencyId)
+      }
+    }
 
     console.log('Task created - full object:', JSON.stringify(newTask, null, 2))
     console.log('Task ID for time block assignment:', newTask.taskId)
@@ -604,13 +659,77 @@ const handleTaskSubmit = async (taskData: any) => {
   }
 }
 
+// Notification management
+const notificationTimeouts = ref<number[]>([])
+
+// Request notification permission
+const requestNotificationPermission = async () => {
+  if ('Notification' in window && Notification.permission === 'default') {
+    try {
+      await Notification.requestPermission()
+    } catch (error) {
+      console.error('Failed to request notification permission:', error)
+    }
+  }
+}
+
+// Schedule notifications for upcoming tasks (5 minutes before)
+const scheduleTaskNotifications = () => {
+  // Clear existing timeouts
+  notificationTimeouts.value.forEach(timeout => clearTimeout(timeout))
+  notificationTimeouts.value = []
+
+  const now = Date.now()
+
+  tasks.value.forEach(task => {
+    // Parse task start time
+    const [hours, minutes] = task.timeStart.split(':').map(Number)
+    const taskStartDate = new Date(currentDate.value)
+    taskStartDate.setHours(hours, minutes, 0, 0)
+    const taskStartTime = taskStartDate.getTime()
+
+    // Calculate time until 5 minutes before task
+    const fiveMinutesBefore = taskStartTime - (5 * 60 * 1000)
+    const timeUntilNotification = fiveMinutesBefore - now
+
+    // Only schedule if the notification time is in the future
+    if (timeUntilNotification > 0 && timeUntilNotification < 24 * 60 * 60 * 1000) { // Within 24 hours
+      const timeoutId = window.setTimeout(() => {
+        sendTaskReminder(task)
+      }, timeUntilNotification)
+
+      notificationTimeouts.value.push(timeoutId)
+      console.log(`Scheduled notification for "${task.title}" in ${Math.round(timeUntilNotification / 1000 / 60)} minutes`)
+    }
+  })
+}
+
+// Send browser notification for upcoming task
+const sendTaskReminder = (task: DisplayTask) => {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('📅 Upcoming Task Reminder', {
+      body: `"${task.title}" starts in 5 minutes at ${task.timeStart}`,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: `task-reminder-${task.taskId}`,
+      requireInteraction: false
+    })
+  }
+}
+
 // Scroll to current time on mount and fetch data
 onMounted(async () => {
   // Initialize selected date
   selectedDate.value = formatDisplayDate(currentDate.value)
 
+  // Request notification permission
+  await requestNotificationPermission()
+
   // Fetch schedule data first
   await fetchScheduleData()
+
+  // Schedule notifications for tasks
+  scheduleTaskNotifications()
 
   // Then scroll to current time
   if (timelineContainerRef.value) {
@@ -618,6 +737,12 @@ onMounted(async () => {
     // Center the current time in the viewport
     timelineContainerRef.value.scrollTop = currentPos - 200
   }
+})
+
+// Clean up timeouts on unmount
+onUnmounted(() => {
+  notificationTimeouts.value.forEach(timeout => clearTimeout(timeout))
+  notificationTimeouts.value = []
 })
 
 // Generate time markers for both full hours and half hours
@@ -931,8 +1056,8 @@ const calculateTaskLayouts = computed(() => {
                 left: task.layoutLeft + '%'
               }"
               @click="handleTaskCardClick(task)"
-              @mouseenter="setHoveredTask(task.id)"
-              @mouseleave="setHoveredTask(null)"
+              @mouseenter="setHoveredTask(task.id); loadTaskDetails(task)"
+              @mouseleave="setHoveredTask(null); clearTaskDetails()"
             >
               <div class="task-header">
                 <div class="task-time">{{ task.timeStart }} - {{ task.timeEnd }}</div>
@@ -960,6 +1085,98 @@ const calculateTaskLayouts = computed(() => {
           </div>
         </div>
       </div>
+
+        <!-- Pre-dependency visualization above task details panel -->
+        <transition name="slide-fade">
+          <div v-if="hoveredTaskDetails && preDependencyTasks.length > 0" class="predependency-panel-container">
+            <!-- Header label -->
+            <div class="predependency-label">
+              <span class="label-icon">⚠</span>
+              <span class="label-text">Required First</span>
+            </div>
+
+            <!-- Dependency cards -->
+            <div class="predependency-cards-wrapper">
+              <div
+                v-for="(preDep, index) in preDependencyTasks"
+                :key="preDep.taskId"
+                class="predependency-card"
+                :style="{
+                  top: `${index * 95}px`
+                }"
+              >
+                <div class="predependency-badge">PREDEPENDENCY</div>
+                <div class="predependency-content">
+                  <div class="predependency-title">{{ preDep.taskName }}</div>
+                  <div class="predependency-meta">
+                    <span class="meta-category">{{ preDep.category }}</span>
+                    <span class="meta-dot">•</span>
+                    <span class="meta-duration">{{ preDep.duration }}m</span>
+                    <span class="meta-dot">•</span>
+                    <span class="meta-priority" :class="`priority-${preDep.priority}`">
+                      {{ getPriorityLabel(preDep.priority) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
+
+        <!-- Task Details Panel -->
+        <transition name="slide-fade">
+          <div
+            v-if="hoveredTaskDetails"
+            class="task-details-panel"
+            :style="{
+              top: preDependencyTasks.length > 0 ? `${200 + (preDependencyTasks.length * 95)}px` : '140px'
+            }"
+          >
+            <div class="details-header">
+              <div class="details-title">{{ hoveredTaskDetails.taskName }}</div>
+              <div class="details-category-badge">{{ hoveredTaskDetails.category }}</div>
+            </div>
+
+            <div class="details-content">
+              <div class="detail-row">
+                <span class="detail-label">Priority:</span>
+                <span class="detail-value priority-value" :class="`priority-${hoveredTaskDetails.priority}`">
+                  {{ getPriorityLabel(hoveredTaskDetails.priority) }}
+                </span>
+              </div>
+
+              <div class="detail-row">
+                <span class="detail-label">Duration:</span>
+                <span class="detail-value">{{ hoveredTaskDetails.duration }} minutes</span>
+              </div>
+
+              <div class="detail-row">
+                <span class="detail-label">Splittable:</span>
+                <span class="detail-value">{{ hoveredTaskDetails.splittable ? 'Yes' : 'No' }}</span>
+              </div>
+
+              <div v-if="hoveredTaskDetails.deadline" class="detail-row">
+                <span class="detail-label">Deadline:</span>
+                <span class="detail-value">{{ new Date(hoveredTaskDetails.deadline).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) }}</span>
+              </div>
+
+              <div v-if="hoveredTaskDetails.slack !== undefined && hoveredTaskDetails.slack > 0" class="detail-row">
+                <span class="detail-label">Slack Time:</span>
+                <span class="detail-value">{{ hoveredTaskDetails.slack }} minutes</span>
+              </div>
+
+              <div class="detail-row">
+                <span class="detail-label">Scheduled:</span>
+                <span class="detail-value">{{ hoveredTaskDetails.timeBlockSet?.length || 0 }} time block(s)</span>
+              </div>
+
+              <div v-if="hoveredTaskDetails.note" class="detail-row notes-row">
+                <span class="detail-label">Notes:</span>
+                <span class="detail-value notes-value">{{ hoveredTaskDetails.note }}</span>
+              </div>
+            </div>
+          </div>
+        </transition>
       </div> <!-- Close main-content-wrapper -->
     </div>
 
@@ -1472,6 +1689,7 @@ const calculateTaskLayouts = computed(() => {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
   border-color: #555;
   z-index: 20;
+  overflow: visible !important;
 }
 
 .task-card.is-dragging {
@@ -1789,4 +2007,311 @@ const calculateTaskLayouts = computed(() => {
 .glow-effect {
   box-shadow: 0 0 20px rgba(255, 111, 97, 0.3);
 }
+
+/* Task Details Panel */
+.task-details-panel {
+  position: fixed;
+  right: 40px;
+  width: 240px;
+  background: #2a2a2a;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  z-index: 1000;
+  border: 1px solid #3a3a3a;
+  transition: top 0.3s ease;
+}
+
+.details-header {
+  background: rgba(255, 111, 97, 0.08);
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(245, 232, 216, 0.08);
+}
+
+.details-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #F5E8D8;
+  margin-bottom: 5px;
+  line-height: 1.3;
+  word-wrap: break-word;
+}
+
+.details-category-badge {
+  display: inline-block;
+  background: rgba(255, 111, 97, 0.15);
+  color: #FF6F61;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(255, 111, 97, 0.25);
+}
+
+.details-content {
+  padding: 10px 16px 10px;
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  gap: 8px;
+}
+
+.detail-row:last-child {
+  margin-bottom: 0;
+}
+
+.detail-row.notes-row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.detail-label {
+  font-size: 9px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.detail-value {
+  font-size: 11px;
+  color: #F5E8D8;
+  font-weight: 500;
+  text-align: right;
+}
+
+.priority-value {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: capitalize;
+  font-size: 10px;
+}
+
+.priority-value.priority-1 {
+  background: rgba(153, 153, 153, 0.2);
+  color: #999;
+  border: 1px solid rgba(153, 153, 153, 0.3);
+}
+
+.priority-value.priority-2 {
+  background: rgba(244, 196, 48, 0.2);
+  color: #F4C430;
+  border: 1px solid rgba(244, 196, 48, 0.3);
+}
+
+.priority-value.priority-3 {
+  background: rgba(255, 140, 0, 0.2);
+  color: #FF8C00;
+  border: 1px solid rgba(255, 140, 0, 0.3);
+}
+
+.priority-value.priority-4 {
+  background: rgba(255, 111, 97, 0.2);
+  color: #FF6F61;
+  border: 1px solid rgba(255, 111, 97, 0.3);
+}
+
+.priority-value.priority-5 {
+  background: rgba(255, 61, 0, 0.2);
+  color: #FF3D00;
+  border: 1px solid rgba(255, 61, 0, 0.3);
+}
+
+.notes-row .notes-value {
+  font-size: 10px;
+  color: #AAA;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-style: italic;
+  background: rgba(245, 232, 216, 0.02);
+  padding: 6px 8px;
+  border-radius: 4px;
+  width: 100%;
+  text-align: left;
+  border-left: 2px solid rgba(255, 111, 97, 0.2);
+  padding-left: 8px;
+}
+
+/* Slide-fade transition */
+.slide-fade-enter-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-fade-leave-active {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slide-fade-enter-from {
+  transform: translateX(12px);
+  opacity: 0;
+}
+
+.slide-fade-leave-to {
+  transform: translateX(12px);
+  opacity: 0;
+}
+
+/* Pre-dependency visualization above task details panel */
+.predependency-panel-container {
+  position: fixed;
+  top: 140px;
+  right: 40px;
+  width: 240px;
+  pointer-events: none;
+  z-index: 999;
+}
+
+/* "Required First" header label */
+.predependency-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 111, 97, 0.15);
+  border: 1px solid rgba(255, 111, 97, 0.3);
+  border-radius: 8px;
+  padding: 7px 14px;
+  width: fit-content;
+  margin-bottom: 12px;
+  animation: fadeInDown 0.3s ease;
+}
+
+.label-icon {
+  font-size: 14px;
+  color: #FF6F61;
+}
+
+.label-text {
+  font-size: 10px;
+  font-weight: 700;
+  color: #FF6F61;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.predependency-cards-wrapper {
+  position: relative;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.predependency-card {
+  position: absolute;
+  width: 240px;
+  background: #2a2a2a;
+  border: 1.5px solid rgba(255, 111, 97, 0.3);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: fadeInDown 0.3s ease;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 78px;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.predependency-badge {
+  align-self: flex-start;
+  background: rgba(255, 111, 97, 0.2);
+  color: #FF6F61;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(255, 111, 97, 0.3);
+}
+
+.predependency-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.predependency-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #F5E8D8;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.predependency-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #888;
+}
+
+.meta-category {
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #AAA;
+}
+
+.meta-dot {
+  color: #555;
+}
+
+.meta-duration {
+  color: #AAA;
+}
+
+.meta-priority {
+  font-weight: 600;
+  text-transform: capitalize;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.meta-priority.priority-1 {
+  background: rgba(153, 153, 153, 0.15);
+  color: #999;
+}
+
+.meta-priority.priority-2 {
+  background: rgba(244, 196, 48, 0.15);
+  color: #F4C430;
+}
+
+.meta-priority.priority-3 {
+  background: rgba(255, 140, 0, 0.15);
+  color: #FF8C00;
+}
+
+.meta-priority.priority-4 {
+  background: rgba(255, 111, 97, 0.15);
+  color: #FF6F61;
+}
+
+.meta-priority.priority-5 {
+  background: rgba(255, 61, 0, 0.15);
+  color: #FF3D00;
+}
+
 </style>

@@ -192,6 +192,10 @@ export const TaskCatalogAPI = {
   async updateTaskNote(owner: string, taskId: string, note: string): Promise<void> {
     return apiCall<void>('/api/TaskCatalog/updateTaskNote', { owner, taskId, note })
   },
+
+  async addPreDependence(owner: string, taskId: string, newPreDependence: string): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/addPreDependence', { owner, taskId, newPreDependence })
+  },
 }
 
 // RoutineLog interfaces

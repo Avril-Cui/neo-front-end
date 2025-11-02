@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { TaskCatalogAPI, type Task } from '../services/api'
+import { useAuthStore } from '../stores/auth'
 
 interface Props {
   show: boolean
@@ -21,6 +23,10 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits(['close', 'submit', 'update'])
 
+// Auth store
+const authStore = useAuthStore()
+const CURRENT_USER = authStore.getCurrentUserId() || 'Friday'
+
 // Helper function to format time as HH:MM
 const formatTime = (hour: number, minute: number = 0) => {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
@@ -29,7 +35,6 @@ const formatTime = (hour: number, minute: number = 0) => {
 // Form data
 const taskName = ref('')
 const selectedCategory = ref('Work')
-const duration = ref(1)
 const selectedPriority = ref(3) // 1=lowest, 2=low, 3=medium, 4=high, 5=highest
 const splittable = ref(false)
 const showAdvanced = ref(false)
@@ -38,8 +43,51 @@ const slack = ref(0)
 const notes = ref('')
 const startTime = ref('')
 const endTime = ref('')
+const selectedPreDependencies = ref<string[]>([])
 
 const showCategoryDropdown = ref(false)
+
+// Fetch all tasks for predependency selection
+const allTasks = ref<Task[]>([])
+const showPreDependencyDropdown = ref(false)
+const preDependencySearchQuery = ref('')
+
+// Computed property to calculate duration from start and end times
+const calculatedDuration = computed(() => {
+  if (!startTime.value || !endTime.value) return 60 // Default 1 hour in minutes
+
+  const [startHours, startMinutes] = startTime.value.split(':').map(Number)
+  const [endHours, endMinutes] = endTime.value.split(':').map(Number)
+
+  const startTotalMinutes = startHours * 60 + startMinutes
+  const endTotalMinutes = endHours * 60 + endMinutes
+
+  return endTotalMinutes - startTotalMinutes
+})
+
+// Filter tasks based on search query
+const filteredTasks = computed(() => {
+  if (!preDependencySearchQuery.value.trim()) {
+    return allTasks.value
+  }
+  const query = preDependencySearchQuery.value.toLowerCase()
+  return allTasks.value.filter(task =>
+    task.taskName.toLowerCase().includes(query) ||
+    task.category.toLowerCase().includes(query)
+  )
+})
+
+// Fetch all user tasks when modal opens
+watch(() => props.show, async (isVisible) => {
+  if (isVisible) {
+    try {
+      allTasks.value = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
+    } catch (error) {
+      console.error('Failed to fetch tasks for predependency:', error)
+      allTasks.value = []
+    }
+  }
+}, { immediate: true })
 
 // Initialize start and end time based on selectedHour
 watch(() => props.selectedHour, (hour) => {
@@ -54,7 +102,6 @@ watch(() => props.taskData, (data) => {
   if (data && props.editMode) {
     taskName.value = data.taskName
     selectedCategory.value = data.category
-    duration.value = data.duration / 60 // Convert from minutes to hours
     selectedPriority.value = data.priority
     splittable.value = data.splittable
     deadline.value = data.deadline || ''
@@ -86,13 +133,6 @@ const closeModal = () => {
   emit('close')
 }
 
-const adjustDuration = (change: number) => {
-  const newValue = duration.value + change
-  if (newValue >= 0.25 && newValue <= 8) {
-    duration.value = newValue
-  }
-}
-
 const selectCategory = (category: string) => {
   if (category === 'custom') {
     showCustomCategoryInput.value = true
@@ -121,6 +161,22 @@ const selectPriority = (priority: number) => {
   selectedPriority.value = priority
 }
 
+const togglePreDependency = (taskId: string) => {
+  const index = selectedPreDependencies.value.indexOf(taskId)
+  if (index > -1) {
+    selectedPreDependencies.value.splice(index, 1)
+  } else {
+    selectedPreDependencies.value.push(taskId)
+  }
+}
+
+// Clear search query when dropdown closes
+watch(showPreDependencyDropdown, (isOpen) => {
+  if (!isOpen) {
+    preDependencySearchQuery.value = ''
+  }
+})
+
 const handleSubmit = () => {
   if (!taskName.value.trim()) return
 
@@ -128,7 +184,7 @@ const handleSubmit = () => {
     taskId: props.taskData?.taskId,
     taskName: taskName.value,
     category: selectedCategory.value,
-    duration: duration.value * 60, // Convert to minutes
+    duration: calculatedDuration.value, // Use calculated duration in minutes
     priority: selectedPriority.value,
     splittable: splittable.value,
     startTime: startTime.value,
@@ -136,7 +192,8 @@ const handleSubmit = () => {
     deadline: deadline.value || null,
     slack: slack.value * 60, // Convert to minutes
     notes: notes.value || null,
-    selectedHour: props.selectedHour
+    selectedHour: props.selectedHour,
+    preDependencies: selectedPreDependencies.value
   }
 
   if (props.editMode) {
@@ -222,27 +279,6 @@ const handleSubmit = () => {
                           Confirm
                         </button>
                       </div>
-                    </div>
-                  </div>
-
-                  <div class="duration-field">
-                    <div>
-                      <label class="input-label">Duration</label>
-                      <div class="duration-input">
-                        <input
-                          type="number"
-                          class="duration-value"
-                          v-model.number="duration"
-                          min="0.25"
-                          max="8"
-                          step="0.25"
-                        />
-                        <span class="duration-unit">hr</span>
-                      </div>
-                    </div>
-                    <div class="duration-controls">
-                      <button type="button" class="duration-btn" @click="adjustDuration(0.25)">+</button>
-                      <button type="button" class="duration-btn" @click="adjustDuration(-0.25)">−</button>
                     </div>
                   </div>
                 </div>
@@ -353,6 +389,54 @@ const handleSubmit = () => {
                           step="0.25"
                         />
                         <span class="duration-unit">hr</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="input-field field-full">
+                    <label class="input-label">Pre-Dependencies (Optional)</label>
+                    <div class="predependency-selector">
+                      <div
+                        class="predependency-button"
+                        @click="showPreDependencyDropdown = !showPreDependencyDropdown"
+                      >
+                        <span v-if="selectedPreDependencies.length === 0">Select tasks...</span>
+                        <span v-else>{{ selectedPreDependencies.length }} task(s) selected</span>
+                        <span class="select-icon">▼</span>
+                      </div>
+                      <div v-if="showPreDependencyDropdown" class="predependency-options">
+                        <div class="predependency-search">
+                          <input
+                            type="text"
+                            class="predependency-search-input"
+                            v-model="preDependencySearchQuery"
+                            placeholder="Search tasks..."
+                            @click.stop
+                          />
+                        </div>
+                        <div class="predependency-list">
+                          <div
+                            v-for="task in filteredTasks"
+                            :key="task.taskId"
+                            class="predependency-option"
+                            :class="{ selected: selectedPreDependencies.includes(task.taskId) }"
+                            @click="togglePreDependency(task.taskId)"
+                          >
+                            <div class="task-checkbox">
+                              <span v-if="selectedPreDependencies.includes(task.taskId)">✓</span>
+                            </div>
+                            <div class="task-info">
+                              <div class="task-name-compact">{{ task.taskName }}</div>
+                              <div class="task-category-compact">{{ task.category }}</div>
+                            </div>
+                          </div>
+                          <div v-if="filteredTasks.length === 0 && allTasks.length > 0" class="predependency-empty">
+                            No matching tasks
+                          </div>
+                          <div v-if="allTasks.length === 0" class="predependency-empty">
+                            No tasks available
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -960,5 +1044,140 @@ const handleSubmit = () => {
 .btn-primary:hover {
   background: linear-gradient(135deg, #6B8FFF 0%, #5B7FFF 100%);
   transform: translateY(-1px);
+}
+
+/* Pre-dependency selector */
+.predependency-selector {
+  position: relative;
+}
+
+.predependency-button {
+  width: 100%;
+  padding: 16px 20px;
+  background: transparent;
+  border: 2px solid rgba(245, 232, 216, 0.2);
+  border-radius: 12px;
+  color: #F5E8D8;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.predependency-button:hover {
+  border-color: #799EFF;
+}
+
+.predependency-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: rgba(42, 42, 42, 0.98);
+  border: 1px solid #444;
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  z-index: 10;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.predependency-search {
+  padding: 12px;
+  border-bottom: 1px solid rgba(68, 68, 68, 0.5);
+  background: rgba(30, 30, 30, 0.5);
+}
+
+.predependency-search-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(245, 232, 216, 0.05);
+  border: 1px solid rgba(245, 232, 216, 0.2);
+  border-radius: 8px;
+  color: #F5E8D8;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.predependency-search-input:focus {
+  border-color: #799EFF;
+  background: rgba(245, 232, 216, 0.08);
+  box-shadow: 0 0 0 3px rgba(121, 158, 255, 0.1);
+}
+
+.predependency-search-input::placeholder {
+  color: #666;
+}
+
+.predependency-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.predependency-option {
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid rgba(68, 68, 68, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.predependency-option:last-child {
+  border-bottom: none;
+}
+
+.predependency-option:hover {
+  background: rgba(121, 158, 255, 0.1);
+}
+
+.predependency-option.selected {
+  background: rgba(121, 158, 255, 0.15);
+}
+
+.task-checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #799EFF;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.predependency-option.selected .task-checkbox {
+  background: #799EFF;
+  color: #1C1C1C;
+}
+
+.task-info {
+  flex: 1;
+}
+
+.task-name-compact {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F5E8D8;
+  margin-bottom: 2px;
+}
+
+.task-category-compact {
+  font-size: 11px;
+  color: #888;
+}
+
+.predependency-empty {
+  padding: 16px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+  font-style: italic;
 }
 </style>
