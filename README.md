@@ -2,6 +2,8 @@
 > NEO - The ONE scheduling tool you need.
 Most productivity tools force people into rigid plans that crumble the moment real life interferes, while students and professionals need not just another complex and static planner, but a dynamic companion that learns, adjusts, and helps them actually boost productivity. Neo is the ONE calendar app you need. Think of it as your digital personal assistant that adjust your daily plans dynamically as your day unfolds. Neo tackles the scheduling and productivity problems by making daily planning flexible and adaptive.
 
+https://neo-cal.onrender.com/
+
 # Screen Recording
 Click on the image below, and you will get redirected to a youtube video (this is for 4b). Final video demo, see my backend repo.
 
