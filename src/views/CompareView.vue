@@ -1063,6 +1063,7 @@ CRITICAL REQUIREMENTS:
 9. For a task with a long duration and is splittable, consider splitting it into multiple non-consecutive time blocks for better focus
 10. If time is insufficient to schedule all tasks, prioritize tasks with urgent deadlines (approaching soon) or higher priority (1-2); only drop tasks if absolutely no time remains
 11. If the task is time sensitive and that critical time is already passed, YOU MUST NOT reschedule it (i.e., DO NOT GENERATE AN ADAPTIVE SCHEDULE FOR IT). For example, if the task is lunch break, but the current time is already in the afternoon, add this task to the droppedTasks, and mark reason as "Lunch time is already passed, cannot reschedule this." Do not generate a schedule for lunch.
+12. If you decide to schedule adaptive tasks to the next day, and the user didn't specify when they want to start the day, BY DEFAULT, schedule the tasks earliest at 8:30AM. So, the user would begin the day at 8:30AM.
 
 Return your response as a JSON object with this exact structure:
 {
