@@ -17,6 +17,10 @@ interface Props {
     deadline?: string
     slack?: number
     note?: string
+    preDependence?: string[]
+    startTime?: string
+    endTime?: string
+    timeBlockId?: string
   }
 }
 
@@ -46,6 +50,18 @@ const endTime = ref('')
 const selectedPreDependencies = ref<string[]>([])
 
 const showCategoryDropdown = ref(false)
+
+// Store original task data for comparison when updating
+const originalTaskData = ref<any>(null)
+
+// Validation error states
+const errors = ref({
+  taskName: false,
+  category: false,
+  startTime: false,
+  endTime: false,
+  priority: false
+})
 
 // Fetch all tasks for predependency selection
 const allTasks = ref<Task[]>([])
@@ -77,7 +93,7 @@ const filteredTasks = computed(() => {
   )
 })
 
-// Fetch all user tasks when modal opens
+// Fetch all user tasks when modal opens and reset form when it closes
 watch(() => props.show, async (isVisible) => {
   if (isVisible) {
     try {
@@ -86,6 +102,19 @@ watch(() => props.show, async (isVisible) => {
       console.error('Failed to fetch tasks for predependency:', error)
       allTasks.value = []
     }
+  } else if (!isVisible && !props.editMode) {
+    // Clear form when modal closes in create mode
+    taskName.value = ''
+    selectedCategory.value = 'Work'
+    selectedPriority.value = 3
+    splittable.value = false
+    deadline.value = ''
+    slack.value = 0
+    notes.value = ''
+    startTime.value = ''
+    endTime.value = ''
+    selectedPreDependencies.value = []
+    originalTaskData.value = null
   }
 }, { immediate: true })
 
@@ -100,6 +129,22 @@ watch(() => props.selectedHour, (hour) => {
 // Populate form fields when editing a task
 watch(() => props.taskData, (data) => {
   if (data && props.editMode) {
+    // Store original task data for comparison
+    originalTaskData.value = {
+      taskName: data.taskName,
+      category: data.category,
+      duration: data.duration,
+      priority: data.priority,
+      splittable: data.splittable,
+      deadline: data.deadline || '',
+      slack: data.slack || 0,
+      note: data.note || '',
+      preDependence: data.preDependence || [],
+      startTime: data.startTime || '',
+      endTime: data.endTime || ''
+    }
+
+    // Populate form fields
     taskName.value = data.taskName
     selectedCategory.value = data.category
     selectedPriority.value = data.priority
@@ -107,6 +152,14 @@ watch(() => props.taskData, (data) => {
     deadline.value = data.deadline || ''
     slack.value = data.slack ? data.slack / 60 : 0 // Convert from minutes to hours
     notes.value = data.note || ''
+    // Populate start and end time from the task's time block
+    startTime.value = data.startTime || ''
+    endTime.value = data.endTime || ''
+    // Populate predependencies
+    selectedPreDependencies.value = data.preDependence || []
+  } else if (!props.editMode) {
+    // Clear original data when not in edit mode
+    originalTaskData.value = null
   }
 }, { immediate: true })
 
@@ -177,8 +230,48 @@ watch(showPreDependencyDropdown, (isOpen) => {
   }
 })
 
-const handleSubmit = () => {
-  if (!taskName.value.trim()) return
+const handleSubmit = async () => {
+  // Reset all errors
+  errors.value = {
+    taskName: false,
+    category: false,
+    startTime: false,
+    endTime: false,
+    priority: false
+  }
+
+  // Validate required fields
+  let hasError = false
+
+  if (!taskName.value.trim()) {
+    errors.value.taskName = true
+    hasError = true
+  }
+
+  if (!selectedCategory.value) {
+    errors.value.category = true
+    hasError = true
+  }
+
+  if (!startTime.value) {
+    errors.value.startTime = true
+    hasError = true
+  }
+
+  if (!endTime.value) {
+    errors.value.endTime = true
+    hasError = true
+  }
+
+  if (!selectedPriority.value) {
+    errors.value.priority = true
+    hasError = true
+  }
+
+  // If there are errors, don't submit
+  if (hasError) {
+    return
+  }
 
   const formData = {
     taskId: props.taskData?.taskId,
@@ -196,12 +289,120 @@ const handleSubmit = () => {
     preDependencies: selectedPreDependencies.value
   }
 
-  if (props.editMode) {
-    emit('update', formData)
+  if (props.editMode && originalTaskData.value) {
+    // In edit mode, call individual update actions for each changed field
+    try {
+      const taskId = props.taskData?.taskId
+      if (!taskId) {
+        throw new Error('Task ID is missing')
+      }
+
+      console.log('🔄 Starting task update with individual field updates')
+      console.log('Current task name:', taskName.value)
+      console.log('Original task name:', originalTaskData.value.taskName)
+
+      // Collect all update promises to ensure they complete
+      const updatePromises: Promise<void>[] = []
+
+      // Check and update each field individually
+      // Always update taskName if it's different (even if original was null)
+      if (taskName.value.trim()) {
+        if (taskName.value !== originalTaskData.value.taskName) {
+          console.log('📝 Updating task name from', originalTaskData.value.taskName, 'to', taskName.value)
+          updatePromises.push(
+            TaskCatalogAPI.updateTaskName(CURRENT_USER, taskId, taskName.value.trim())
+              .then(() => console.log('✅ Task name updated successfully'))
+              .catch(err => {
+                console.error('❌ Failed to update task name:', err)
+                throw err
+              })
+          )
+        }
+      } else {
+        console.warn('⚠️ Task name is empty, skipping update')
+      }
+
+      if (selectedCategory.value !== originalTaskData.value.category) {
+        console.log('📁 Updating category:', selectedCategory.value)
+        updatePromises.push(TaskCatalogAPI.updateTaskCategory(CURRENT_USER, taskId, selectedCategory.value))
+      }
+
+      if (calculatedDuration.value !== originalTaskData.value.duration) {
+        console.log('⏱️ Updating duration:', calculatedDuration.value)
+        updatePromises.push(TaskCatalogAPI.updateTaskDuration(CURRENT_USER, taskId, calculatedDuration.value))
+      }
+
+      if (selectedPriority.value !== originalTaskData.value.priority) {
+        console.log('⚡ Updating priority:', selectedPriority.value)
+        updatePromises.push(TaskCatalogAPI.updateTaskPriority(CURRENT_USER, taskId, selectedPriority.value))
+      }
+
+      if (splittable.value !== originalTaskData.value.splittable) {
+        console.log('✂️ Updating splittable:', splittable.value)
+        updatePromises.push(TaskCatalogAPI.updateTaskSplittable(CURRENT_USER, taskId, splittable.value))
+      }
+
+      if (deadline.value !== originalTaskData.value.deadline) {
+        console.log('📅 Updating deadline:', deadline.value)
+        updatePromises.push(TaskCatalogAPI.updateTaskDeadline(CURRENT_USER, taskId, deadline.value))
+      }
+
+      const slackInMinutes = slack.value * 60
+      if (slackInMinutes !== originalTaskData.value.slack) {
+        console.log('⏰ Updating slack:', slackInMinutes)
+        updatePromises.push(TaskCatalogAPI.updateTaskSlack(CURRENT_USER, taskId, slackInMinutes))
+      }
+
+      if (notes.value !== originalTaskData.value.note) {
+        console.log('📝 Updating note:', notes.value)
+        updatePromises.push(TaskCatalogAPI.updateTaskNote(CURRENT_USER, taskId, notes.value))
+      }
+
+      // Check and update predependencies
+      const originalPreDeps = originalTaskData.value.preDependence || []
+      const currentPreDeps = selectedPreDependencies.value || []
+
+      // Find predependencies to add (in current but not in original)
+      const preDepsToAdd = currentPreDeps.filter(dep => !originalPreDeps.includes(dep))
+      // Find predependencies to remove (in original but not in current)
+      const preDepsToRemove = originalPreDeps.filter(dep => !currentPreDeps.includes(dep))
+
+      if (preDepsToAdd.length > 0 || preDepsToRemove.length > 0) {
+        console.log('🔗 Updating predependencies - Add:', preDepsToAdd, 'Remove:', preDepsToRemove)
+
+        // Add new predependencies
+        preDepsToAdd.forEach(dep => {
+          updatePromises.push(TaskCatalogAPI.addPreDependence(CURRENT_USER, taskId, dep))
+        })
+
+        // Remove old predependencies
+        preDepsToRemove.forEach(dep => {
+          updatePromises.push(TaskCatalogAPI.removePreDependence(CURRENT_USER, taskId, dep))
+        })
+      }
+
+      // Wait for ALL updates to complete before proceeding
+      if (updatePromises.length > 0) {
+        console.log(`⏳ Waiting for ${updatePromises.length} field update(s) to complete...`)
+        await Promise.all(updatePromises)
+        console.log('✅ All field updates completed successfully')
+
+        // Add a small delay to ensure backend commits are complete
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+
+      // Emit update event with formData (time changes handled separately in TodayView)
+      emit('update', formData)
+      closeModal()
+    } catch (error: any) {
+      console.error('❌ Failed to update task:', error)
+      alert(`Failed to update task: ${error.message || 'Unknown error'}`)
+    }
   } else {
+    // Create mode
     emit('submit', formData)
+    closeModal()
   }
-  closeModal()
 }
 </script>
 
@@ -233,11 +434,12 @@ const handleSubmit = () => {
                       required
                     />
                   </div>
+                  <div v-if="errors.taskName" class="error-message">This field is required</div>
                 </div>
 
                 <div class="field-row">
                   <div class="select-field">
-                    <label class="input-label">Category</label>
+                    <label class="input-label">Category *</label>
                     <div
                       class="custom-select"
                       :class="{ open: showCategoryDropdown }"
@@ -246,6 +448,7 @@ const handleSubmit = () => {
                       <span>{{ selectedCategoryData.icon }} {{ selectedCategoryData.label }}</span>
                       <span class="select-icon">▼</span>
                     </div>
+                    <div v-if="errors.category" class="error-message">This field is required</div>
                     <div v-if="showCategoryDropdown" class="select-options">
                       <div
                         v-for="cat in defaultCategories"
@@ -285,29 +488,31 @@ const handleSubmit = () => {
 
                 <div class="field-row">
                   <div class="input-field">
-                    <label class="input-label">Start Time</label>
+                    <label class="input-label">Start Time *</label>
                     <input
                       type="time"
                       class="time-input"
                       v-model="startTime"
                       required
                     />
+                    <div v-if="errors.startTime" class="error-message">This field is required</div>
                   </div>
 
                   <div class="input-field">
-                    <label class="input-label">End Time</label>
+                    <label class="input-label">End Time *</label>
                     <input
                       type="time"
                       class="time-input"
                       v-model="endTime"
                       required
                     />
+                    <div v-if="errors.endTime" class="error-message">This field is required</div>
                   </div>
                 </div>
 
                 <div class="field-row">
                   <div class="priority-full-width">
-                    <label class="input-label">Priority</label>
+                    <label class="input-label">Priority *</label>
                     <div class="priority-selector">
                       <div
                         class="priority-option lowest"
@@ -345,6 +550,7 @@ const handleSubmit = () => {
                         Highest
                       </div>
                     </div>
+                    <div v-if="errors.priority" class="error-message">This field is required</div>
                   </div>
 
                   <div>
@@ -1071,10 +1277,8 @@ const handleSubmit = () => {
 }
 
 .predependency-options {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
+  position: relative;
+  width: 100%;
   background: rgba(42, 42, 42, 0.98);
   border: 1px solid #444;
   border-radius: 12px;
@@ -1113,7 +1317,7 @@ const handleSubmit = () => {
 }
 
 .predependency-list {
-  max-height: 200px;
+  max-height: 400px;
   overflow-y: auto;
 }
 
@@ -1179,5 +1383,12 @@ const handleSubmit = () => {
   color: #666;
   font-size: 14px;
   font-style: italic;
+}
+
+.error-message {
+  color: #FF6F61;
+  font-size: 12px;
+  margin-top: 6px;
+  font-weight: 500;
 }
 </style>

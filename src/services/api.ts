@@ -1,7 +1,33 @@
+import { useAuthStore } from '@/stores/auth'
+
 const API_BASE_URL = 'http://localhost:8000'
 
-// Current user for prototype - now managed by auth store
-// export const CURRENT_USER = 'Friday'
+// Routes that require authentication (excluded routes that go through syncs)
+const AUTHENTICATED_ROUTES = [
+  '/api/TaskCatalog/createTask',
+  '/api/TaskCatalog/assignSchedule',
+  '/api/TaskCatalog/deleteSchedule',
+  '/api/TaskCatalog/updateTaskName',
+  '/api/TaskCatalog/updateTaskCategory',
+  '/api/TaskCatalog/updateTaskDuration',
+  '/api/TaskCatalog/updateTaskPriority',
+  '/api/TaskCatalog/updateTaskSplittable',
+  '/api/TaskCatalog/updateTaskDeadline',
+  '/api/TaskCatalog/updateTaskSlack',
+  '/api/TaskCatalog/updateTaskNote',
+  '/api/TaskCatalog/addPreDependence',
+  '/api/TaskCatalog/deleteTask',
+  '/api/ScheduleTime/assignTimeBlock',
+  '/api/ScheduleTime/removeTask',
+  '/api/RoutineLog/createSession',
+  '/api/RoutineLog/startSession',
+  '/api/RoutineLog/endSession',
+  '/api/RoutineLog/interruptSession',
+  '/api/RoutineLog/deleteSession',
+  '/api/AdaptiveSchedule/assignAdaptiveSchedule',
+  '/api/AdaptiveSchedule/deleteAdaptiveBlock',
+  '/api/AdaptiveSchedule/requestAdaptiveScheduleAI',
+]
 
 // Task interfaces (as returned by API)
 interface TaskResponse {
@@ -88,14 +114,30 @@ function mapTimeBlockResponse(response: TimeBlockResponse): TimeBlock {
 // API call helper
 async function apiCall<T>(endpoint: string, body: any): Promise<T> {
   try {
-    console.log(`API Call: ${endpoint}`, body)
+    // Auto-inject sessionToken for authenticated routes
+    let requestBody = body
+    if (AUTHENTICATED_ROUTES.includes(endpoint)) {
+      const authStore = useAuthStore()
+      const sessionToken = authStore.getSessionToken()
+
+      if (!sessionToken) {
+        throw new Error('Authentication required - no session token')
+      }
+
+      // Remove owner parameter and add sessionToken instead
+      const { owner, ...restBody } = body
+      requestBody = { sessionToken, ...restBody }
+      console.log(`API Call (Authenticated): ${endpoint}`, requestBody)
+    } else {
+      console.log(`API Call: ${endpoint}`, body)
+    }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     })
 
     const data = await response.json()
@@ -195,6 +237,10 @@ export const TaskCatalogAPI = {
 
   async addPreDependence(owner: string, taskId: string, newPreDependence: string): Promise<void> {
     return apiCall<void>('/api/TaskCatalog/addPreDependence', { owner, taskId, newPreDependence })
+  },
+
+  async removePreDependence(owner: string, taskId: string, oldPreDependence: string): Promise<void> {
+    return apiCall<void>('/api/TaskCatalog/removePreDependence', { owner, taskId, oldPreDependence })
   },
 }
 
@@ -405,6 +451,7 @@ export interface AuthUser {
   userId: string
   username: string
   email?: string
+  sessionToken?: string
 }
 
 // Auth APIs
@@ -425,10 +472,11 @@ export const AuthAPI = {
     email: string
     password: string
   }): Promise<AuthUser> {
-    const response = await apiCall<{ userId: string; username: string }>('/api/Auth/authenticateUser', params)
+    const response = await apiCall<{ userId: string; username: string; sessionToken: string }>('/api/Auth/authenticateUser', params)
     return {
       userId: response.userId,
       username: response.username,
+      sessionToken: response.sessionToken,
     }
   },
 

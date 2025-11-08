@@ -123,14 +123,12 @@ const handleLogout = () => {
   }
 }
 
-// Helper to convert timestamp (number or string) to 12-hour format
+// Helper to convert timestamp (number or string) to 24-hour format
 const formatTime = (timestamp: number | string) => {
   const date = typeof timestamp === 'number' ? new Date(timestamp) : new Date(timestamp)
   const hours = date.getHours()
   const minutes = date.getMinutes()
-  const period = hours >= 12 ? 'PM' : 'AM'
-  const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
-  return `${displayHour}:${String(minutes).padStart(2, '0')} ${period}`
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
 // Helper to get priority label (1-5 to text)
@@ -408,7 +406,14 @@ const deleteTask = async (task: DisplayTask) => {
       }
     }
 
-    // 3. Always refresh the schedule to sync UI with backend state
+    // 3. Immediately remove from UI for instant feedback
+    tasks.value = tasks.value.filter(t =>
+      !(t.taskId === task.taskId && t.timeBlockId === task.timeBlockId)
+    )
+    console.log('🗑️ Task removed from UI')
+
+    // 4. Wait a moment for backend to fully commit changes, then refresh to sync
+    await new Promise(resolve => setTimeout(resolve, 100))
     await fetchScheduleData()
     console.log('🗑️ Schedule refreshed successfully')
   } catch (error: any) {
@@ -433,7 +438,13 @@ const handleTaskCardClick = async (displayTask: DisplayTask) => {
     const fullTask = await TaskCatalogAPI.getTask(CURRENT_USER, displayTask.taskId)
     console.log('Full task details:', fullTask)
 
-    editingTask.value = fullTask
+    // Add the time block information from the display task
+    editingTask.value = {
+      ...fullTask,
+      timeBlockId: displayTask.timeBlockId,
+      startTime: displayTask.timeStart,
+      endTime: displayTask.timeEnd
+    }
     isEditMode.value = true
     showAddTaskModal.value = true
   } catch (error: any) {
@@ -451,14 +462,29 @@ const handleTaskUpdate = async (taskData: any) => {
       throw new Error('Task ID is missing')
     }
 
-    // Check if start/end time has changed
-    const hasTimeChanged = taskData.startTime || taskData.endTime
+    if (!editingTask.value) {
+      throw new Error('No task is being edited')
+    }
+
+    // Store the original task in a local variable to prevent it from being cleared
+    const originalTask = editingTask.value
+
+    // Check if start/end time has actually changed from the original
+    console.log('🕐 Time comparison:')
+    console.log('  Original start:', originalTask.startTime, 'New start:', taskData.startTime)
+    console.log('  Original end:', originalTask.endTime, 'New end:', taskData.endTime)
+
+    const hasTimeChanged =
+      (originalTask.startTime !== taskData.startTime) ||
+      (originalTask.endTime !== taskData.endTime)
+
+    console.log('🕐 Has time changed?', hasTimeChanged)
 
     // Find the current task's time block
     const currentTask = tasks.value.find(t => t.taskId === taskData.taskId)
 
     if (hasTimeChanged && currentTask) {
-      console.log('Time changed - updating time block assignment')
+      console.log('⏰ Time changed - updating time block assignment')
 
       // Parse new start and end times
       const selectedDay = currentDate.value
@@ -493,30 +519,17 @@ const handleTaskUpdate = async (taskData: any) => {
       await TaskCatalogAPI.assignSchedule(CURRENT_USER, taskData.taskId, timeBlockResult.timeBlockId)
     }
 
-    // Call update APIs for each changed field (excluding time-related fields)
-    await Promise.all([
-      TaskCatalogAPI.updateTaskName(CURRENT_USER, taskData.taskId, taskData.taskName),
-      TaskCatalogAPI.updateTaskCategory(CURRENT_USER, taskData.taskId, taskData.category),
-      TaskCatalogAPI.updateTaskDuration(CURRENT_USER, taskData.taskId, taskData.duration),
-      TaskCatalogAPI.updateTaskPriority(CURRENT_USER, taskData.taskId, taskData.priority),
-      TaskCatalogAPI.updateTaskSplittable(CURRENT_USER, taskData.taskId, taskData.splittable),
-      taskData.deadline ? TaskCatalogAPI.updateTaskDeadline(CURRENT_USER, taskData.taskId, taskData.deadline) : Promise.resolve(),
-      taskData.slack ? TaskCatalogAPI.updateTaskSlack(CURRENT_USER, taskData.taskId, taskData.slack) : Promise.resolve(),
-      taskData.notes ? TaskCatalogAPI.updateTaskNote(CURRENT_USER, taskData.taskId, taskData.notes) : Promise.resolve(),
-    ])
-
-    // Add pre-dependencies if any were selected
-    if (taskData.preDependencies && taskData.preDependencies.length > 0) {
-      for (const preDependencyId of taskData.preDependencies) {
-        await TaskCatalogAPI.addPreDependence(CURRENT_USER, taskData.taskId, preDependencyId)
-      }
-    }
+    // Note: Individual field updates are now handled by AddTaskModal
+    // TodayView only handles time block changes above
 
     console.log('Task updated successfully')
 
     // Reset edit mode
     isEditMode.value = false
     editingTask.value = null
+
+    // Add a small delay to ensure all backend updates are committed
+    await new Promise(resolve => setTimeout(resolve, 150))
 
     // Refresh the schedule
     await fetchScheduleData()
@@ -752,12 +765,9 @@ const timeMarkers = Array.from({ length: 48 }, (_, i) => {
   const minute = totalMinutes % 60
   const isFullHour = minute === 0
 
-  const period = hour >= 12 ? 'PM' : 'AM'
-  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
-
   let label = ''
   if (isFullHour) {
-    label = hour === 0 ? 'Midnight' : hour === 12 ? 'Noon' : `${displayHour} ${period}`
+    label = hour === 0 ? '00:00' : `${String(hour).padStart(2, '0')}:00`
   } else {
     label = `:${minute}`
   }
@@ -773,17 +783,12 @@ const timeMarkers = Array.from({ length: 48 }, (_, i) => {
 
 // Calculate task position based on time (in pixels from top)
 const getTaskPosition = (timeString: string) => {
-  // Parse time like "9:00 AM" or "2:30 PM"
-  const match = timeString.match(/(\d+):(\d+)\s*(AM|PM)/i)
-  if (!match || !match[1] || !match[2] || !match[3]) return 0
+  // Parse time in 24-hour format like "20:00" or "09:30"
+  const match = timeString.match(/(\d+):(\d+)/)
+  if (!match || !match[1] || !match[2]) return 0
 
-  let hours = parseInt(match[1])
+  const hours = parseInt(match[1])
   const minutes = parseInt(match[2])
-  const period = match[3].toUpperCase()
-
-  // Convert to 24-hour format
-  if (period === 'PM' && hours !== 12) hours += 12
-  if (period === 'AM' && hours === 12) hours = 0
 
   // Calculate position using HOUR_HEIGHT
   return hours * HOUR_HEIGHT + (minutes / 60) * HOUR_HEIGHT

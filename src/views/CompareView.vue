@@ -168,9 +168,10 @@
               :key="task.taskId"
               class="adaptive-task"
             >
-              <div class="task-time">{{ formatTime(adaptiveBlock.start) }} - {{ formatTime(adaptiveBlock.end) }}</div>
+              <div v-if="(adaptiveBlock.end - adaptiveBlock.start) > 1800000" class="task-time">{{ formatTime(adaptiveBlock.start) }} - {{ formatTime(adaptiveBlock.end) }}</div>
               <div class="task-title">{{ task.taskName }}</div>
-              <div class="task-duration">{{ formatDuration(adaptiveBlock.end - adaptiveBlock.start) }} • {{ task.category }}</div>
+              <div v-if="(adaptiveBlock.end - adaptiveBlock.start) > 1800000" class="task-duration">{{ formatDuration(adaptiveBlock.end - adaptiveBlock.start) }} • {{ task.category }}</div>
+              <div v-else class="task-duration">{{ task.category }}</div>
             </div>
           </div>
 
@@ -2222,7 +2223,8 @@ onMounted(async () => {
 }
 
 .legend-icon.overlap {
-  background: linear-gradient(45deg, rgba(245, 232, 216, 0.3) 50%, rgba(255, 111, 97, 0.3) 50%);
+  background: rgba(76, 175, 80, 0.3);
+  border: 2px solid #4CAF50;
 }
 
 .timeline-wrapper {

@@ -5,6 +5,7 @@ export interface User {
   userId: string
   username: string
   email: string
+  sessionToken?: string
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -44,6 +45,10 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value?.username || null
   }
 
+  function getSessionToken() {
+    return user.value?.sessionToken || null
+  }
+
   return {
     user,
     isAuthenticated,
@@ -52,5 +57,6 @@ export const useAuthStore = defineStore('auth', () => {
     getCurrentUser,
     getCurrentUserId,
     getCurrentUsername,
+    getSessionToken,
   }
 })

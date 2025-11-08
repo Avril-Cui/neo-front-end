@@ -198,82 +198,6 @@
         </div>
         </div>
       </div>
-
-      <!-- Dropped Tasks Section -->
-      <div class="section">
-        <h1 class="page-title">⚠️ Dropped Tasks</h1>
-        <p class="page-description">
-          These tasks couldn't be scheduled due to time constraints or conflicts.
-        </p>
-
-        <div v-if="isLoadingDropped" class="loading-state">
-          <div class="spinner"></div>
-          <p>Loading dropped tasks...</p>
-        </div>
-
-        <div v-else-if="droppedTasks.length === 0" class="empty-state">
-          <div class="empty-icon">✓</div>
-          <h2>No Dropped Tasks</h2>
-          <p>All tasks have been successfully scheduled.</p>
-        </div>
-
-        <div v-else class="tasks-scrollable-container">
-          <div class="tasks-grid">
-            <div
-              v-for="droppedTask in droppedTasksWithDetails"
-              :key="droppedTask.taskId"
-              class="task-card all-task dropped-task"
-            >
-              <div class="task-header">
-                <div class="task-name">{{ droppedTask.task?.taskName || droppedTask.taskId }}</div>
-                <div class="task-priority" :class="`priority-${droppedTask.task?.priority || 3}`">
-                  Priority {{ droppedTask.task?.priority || '?' }}
-                </div>
-              </div>
-
-              <div v-if="droppedTask.task" class="task-details">
-                <div class="detail-row">
-                  <span class="detail-label">📁 Category:</span>
-                  <span class="detail-value category-badge">{{ droppedTask.task.category }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">⏱️ Duration:</span>
-                  <span class="detail-value">{{ droppedTask.task.duration }} min</span>
-                </div>
-                <div v-if="droppedTask.task.deadline" class="detail-row">
-                  <span class="detail-label">📅 Deadline:</span>
-                  <span class="detail-value">{{ formatDateTime(droppedTask.task.deadline) }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">✂️ Splittable:</span>
-                  <span class="detail-value">{{ droppedTask.task.splittable ? 'Yes' : 'No' }}</span>
-                </div>
-              </div>
-
-              <div v-if="droppedTask.task?.note" class="task-note">
-                <span class="note-label">📝 Note:</span>
-                <span class="note-text">{{ droppedTask.task.note }}</span>
-              </div>
-
-              <div class="task-reason">
-                <span class="reason-label">⚠️ Dropped Reason:</span>
-                <span class="reason-text">{{ droppedTask.reason }}</span>
-              </div>
-
-              <div class="task-stats">
-                <div class="stat-item">
-                  <span class="stat-value">{{ droppedTask.task?.timeBlockSet.length || 0 }}</span>
-                  <span class="stat-label">Schedules</span>
-                </div>
-                <div class="stat-item">
-                  <span class="stat-value">{{ droppedTask.task?.preDependence?.length || 0 }}</span>
-                  <span class="stat-label">Dependencies</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -281,7 +205,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { AdaptiveScheduleAPI, TaskCatalogAPI, ScheduleTimeAPI, type DroppedTask, type Task, type TimeBlock } from '../services/api'
+import { TaskCatalogAPI, ScheduleTimeAPI, type Task, type TimeBlock } from '../services/api'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
@@ -430,19 +354,6 @@ const filteredTasks = computed(() => {
   return tasks
 })
 
-// Dropped tasks state
-const isLoadingDropped = ref(true)
-const droppedTasks = ref<DroppedTask[]>([])
-
-interface DroppedTaskWithDetails {
-  taskId: string
-  owner: string
-  reason: string
-  task?: Task
-}
-
-const droppedTasksWithDetails = ref<DroppedTaskWithDetails[]>([])
-
 // Navigation functions
 const navigateToToday = () => {
   router.push('/')
@@ -486,40 +397,6 @@ const fetchAllTasks = async () => {
   }
 }
 
-// Fetch dropped tasks
-const fetchDroppedTasks = async () => {
-  try {
-    isLoadingDropped.value = true
-    const tasks = await AdaptiveScheduleAPI.getDroppedTasks(CURRENT_USER)
-    droppedTasks.value = tasks
-
-    // Fetch task details for each dropped task
-    const tasksWithDetails: DroppedTaskWithDetails[] = []
-    for (const droppedTask of tasks) {
-      try {
-        const task = await TaskCatalogAPI.getTask(CURRENT_USER, droppedTask.taskId)
-        tasksWithDetails.push({
-          ...droppedTask,
-          task
-        })
-      } catch (error) {
-        console.error(`Failed to fetch task ${droppedTask.taskId}:`, error)
-        tasksWithDetails.push({
-          ...droppedTask,
-          task: undefined
-        })
-      }
-    }
-    droppedTasksWithDetails.value = tasksWithDetails
-  } catch (error) {
-    console.error('Failed to fetch dropped tasks:', error)
-    droppedTasks.value = []
-    droppedTasksWithDetails.value = []
-  } finally {
-    isLoadingDropped.value = false
-  }
-}
-
 // Delete task
 const deleteTask = async (task: Task, event: MouseEvent) => {
   event.stopPropagation()
@@ -527,6 +404,12 @@ const deleteTask = async (task: Task, event: MouseEvent) => {
 
   try {
     await TaskCatalogAPI.deleteTask(CURRENT_USER, task.taskId)
+
+    // Immediately remove from UI for instant feedback
+    allTasks.value = allTasks.value.filter(t => t.taskId !== task.taskId)
+
+    // Wait a moment for backend to fully commit changes, then refresh to sync
+    await new Promise(resolve => setTimeout(resolve, 100))
     await fetchAllTasks()
   } catch (error: any) {
     console.error('Failed to delete task:', error)
@@ -548,7 +431,6 @@ const fetchSchedules = async () => {
 
 onMounted(() => {
   fetchAllTasks()
-  fetchDroppedTasks()
   fetchSchedules()
   document.addEventListener('click', handleClickOutside)
 })

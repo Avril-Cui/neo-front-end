@@ -41,6 +41,7 @@ const handleLogin = async () => {
       userId: user.userId,
       username: user.username,
       email: loginEmail.value,
+      sessionToken: user.sessionToken,
     })
 
     // Redirect to home page
