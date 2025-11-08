@@ -1073,10 +1073,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="floating-controls">
-      <button class="control-button reset" @click="resetTimer" title="Reset">🔄</button>
-    </div>
-
     <!-- Completion Modal -->
     <div class="pause-modal" :class="{ active: showCompletionModal }">
       <div class="pause-dialog">

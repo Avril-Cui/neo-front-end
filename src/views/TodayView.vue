@@ -1051,7 +1051,8 @@ const calculateTaskLayouts = computed(() => {
                 {
                   active: task.active,
                   completed: task.completed,
-                  'glow-effect': task.active
+                  'glow-effect': task.active,
+                  'compact-view': task.duration <= 30
                 }
               ]"
               :style="{
@@ -1064,18 +1065,32 @@ const calculateTaskLayouts = computed(() => {
               @mouseenter="setHoveredTask(task.id); loadTaskDetails(task)"
               @mouseleave="setHoveredTask(null); clearTaskDetails()"
             >
-              <div class="task-header">
-                <div class="task-time">{{ task.timeStart }} - {{ task.timeEnd }}</div>
-                <div class="task-duration">{{ task.duration }} min</div>
-              </div>
-              <div class="task-title">{{ task.title }}</div>
-              <div class="task-meta">
-                <div class="task-type">{{ task.category }}</div>
-                <div class="priority-badge">{{ task.priority }}</div>
-              </div>
-              <div class="task-progress">
-                <div class="task-progress-bar" :style="{ width: task.progress + '%' }"></div>
-              </div>
+              <!-- Compact view for tasks ≤30 minutes -->
+              <template v-if="task.duration <= 30">
+                <div class="compact-content">
+                  <div class="compact-title">{{ task.title }}</div>
+                  <div class="compact-meta">
+                    <div class="compact-duration">{{ task.duration }}min</div>
+                    <div class="priority-badge">{{ task.priority }}</div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Full view for tasks >30 minutes -->
+              <template v-else>
+                <div class="task-header">
+                  <div class="task-time">{{ task.timeStart }} - {{ task.timeEnd }}</div>
+                  <div class="task-duration">{{ task.duration }} min</div>
+                </div>
+                <div class="task-title">{{ task.title }}</div>
+                <div class="task-meta">
+                  <div class="task-type">{{ task.category }}</div>
+                  <div class="priority-badge">{{ task.priority }}</div>
+                </div>
+                <div class="task-progress">
+                  <div class="task-progress-bar" :style="{ width: task.progress + '%' }"></div>
+                </div>
+              </template>
 
               <!-- Delete button (shown on hover) -->
               <button
@@ -1184,8 +1199,6 @@ const calculateTaskLayouts = computed(() => {
         </transition>
       </div> <!-- Close main-content-wrapper -->
     </div>
-
-    <button class="add-button">+</button>
 
     <!-- Add Task Modal -->
     <AddTaskModal
@@ -1649,6 +1662,49 @@ const calculateTaskLayouts = computed(() => {
   gap: 6px;
   min-height: 80px;
   z-index: 10;
+}
+
+/* Compact view for tasks ≤30 minutes */
+.task-card.compact-view {
+  padding: 8px 10px;
+  justify-content: center;
+}
+
+.compact-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  flex: 1;
+}
+
+.compact-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #F5E8D8;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.compact-duration {
+  font-size: 10px;
+  color: #888;
+  background: rgba(218, 165, 32, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  border: 1px solid rgba(218, 165, 32, 0.2);
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 .task-card::before {
