@@ -462,10 +462,11 @@ export const AuthAPI = {
     email: string
     password: string
   }): Promise<AuthUser> {
-    const response = await apiCall<{ userId: string; username: string }>('/api/Auth/registerUser', params)
+    const response = await apiCall<{ userId: string; username: string; sessionToken: string }>('/api/Auth/registerUser', params)
     return {
       userId: response.userId,
       username: response.username,
+      sessionToken: response.sessionToken,
     }
   },
 

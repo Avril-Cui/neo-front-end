@@ -85,6 +85,7 @@ const handleSignup = async () => {
       userId: user.userId,
       username: user.username,
       email: signupEmail.value,
+      sessionToken: user.sessionToken,
     })
 
     // Redirect to home page
