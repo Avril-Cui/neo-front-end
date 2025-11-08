@@ -121,6 +121,9 @@ async function apiCall<T>(endpoint: string, body: any): Promise<T> {
       const authStore = useAuthStore()
       const sessionToken = authStore.getSessionToken()
 
+      console.log('API Call requires auth. Current user:', authStore.getCurrentUser())
+      console.log('Session token from store:', sessionToken)
+
       if (!sessionToken) {
         throw new Error('Authentication required - no session token')
       }

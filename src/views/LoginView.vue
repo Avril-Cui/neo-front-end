@@ -88,6 +88,9 @@ const handleSignup = async () => {
       sessionToken: user.sessionToken,
     })
 
+    console.log('User signed up with session token:', user.sessionToken)
+    console.log('Auth store after signup:', authStore.getSessionToken())
+
     // Redirect to home page
     router.push('/')
   } catch (error: any) {
