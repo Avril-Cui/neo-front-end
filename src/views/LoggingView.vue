@@ -145,6 +145,11 @@ const startTimer = async () => {
       return
     }
 
+    console.log('🚀 startTimer called')
+    console.log('  currentSessionName:', currentSessionName.value)
+    console.log('  selectedTaskId:', selectedTaskId.value)
+    console.log('  currentSessionId:', currentSessionId.value)
+
     // Always create a new session (don't reuse existing sessionId)
     // This prevents issues with trying to start an already-active session
     console.log('Creating session:', {
@@ -161,9 +166,13 @@ const startTimer = async () => {
 
     // Only add linkedTaskId if a task was selected
     if (selectedTaskId.value) {
+      console.log('✅ Adding linkedTaskId to session:', selectedTaskId.value)
       createParams.linkedTaskId = selectedTaskId.value
+    } else {
+      console.log('⚠️ No linkedTaskId - creating ad-hoc session')
     }
 
+    console.log('Final createParams:', createParams)
     const createResult = await RoutineLogAPI.createSession(createParams)
 
     // Extract the session ID from the returned session object
@@ -379,32 +388,32 @@ const createNewSession = async () => {
   }
 
   try {
-    // Create session in backend without linkedTaskId
-    const response = await RoutineLogAPI.createSession({
-      owner: CURRENT_USER,
-      sessionName: newSessionName.value.trim()
-    })
+    // Don't create session in backend yet - just store the name locally
+    // The session will be created when Start is clicked
+    const sessionName = newSessionName.value.trim()
 
-    console.log('Created session:', response)
+    console.log('➕ Creating new ad-hoc session:', sessionName)
 
-    // Store the created session
+    // Store the session name locally (no sessionId yet - will be created on Start)
     createdSessions.value.push({
-      sessionId: typeof response.session === 'string' ? response.session : response.session.sessionId,
-      sessionName: newSessionName.value.trim()
+      sessionId: '', // Will be created when Start is clicked
+      sessionName: sessionName
     })
 
     // Set it as the current session name
-    taskInput.value = newSessionName.value.trim()
-    currentSessionName.value = newSessionName.value.trim()
+    taskInput.value = sessionName
+    currentSessionName.value = sessionName
+    selectedTaskId.value = null // No linked task for ad-hoc sessions
+    console.log('⚠️ selectedTaskId cleared (new ad-hoc session)')
 
     // Close form and clear input
     showNewSessionForm.value = false
     newSessionName.value = ''
 
-    alert(`Session "${currentSessionName.value}" created! Click Start to begin.`)
+    alert(`Session "${currentSessionName.value}" ready! Click Start to begin.`)
   } catch (error: any) {
-    console.error('Failed to create session:', error)
-    alert(`Failed to create session: ${error.message || 'Unknown error'}`)
+    console.error('Failed to prepare session:', error)
+    alert(`Failed to prepare session: ${error.message || 'Unknown error'}`)
   }
 }
 
@@ -487,21 +496,25 @@ const hideTaskSuggestionsDropdown = () => {
 
 // Select a task from suggestions
 const selectTaskFromSuggestions = (task: Task) => {
+  console.log('📝 Selecting task:', task.taskName, 'ID:', task.taskId)
   taskInput.value = task.taskName
   currentSessionName.value = task.taskName
   plannedDuration.value = task.duration
   durationValue.value = Math.ceil(task.duration / 60)
   selectedTaskId.value = task.taskId  // Save the task ID for session creation
+  console.log('✅ selectedTaskId set to:', selectedTaskId.value)
   showTaskSuggestions.value = false
 }
 
 // Select a created session
 const selectCreatedSession = (session: { sessionId: string; sessionName: string }) => {
+  console.log('🔄 Selecting created ad-hoc session:', session.sessionName)
   taskInput.value = session.sessionName
   currentSessionName.value = session.sessionName
-  // For ad-hoc sessions, we can use the existing session ID
-  currentSessionId.value = session.sessionId
+  // Ad-hoc sessions don't have a session ID until Start is clicked
+  currentSessionId.value = null
   selectedTaskId.value = null  // No linked task
+  console.log('⚠️ selectedTaskId cleared (ad-hoc session)')
   showTaskSuggestions.value = false
 }
 
