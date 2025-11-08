@@ -145,7 +145,7 @@ const fetchScheduleData = async () => {
     console.log('📅 Fetching schedule for user:', CURRENT_USER)
 
     // Get all user's tasks first
-    let allTasks = []
+    let allTasks: Task[] = []
     try {
       allTasks = await TaskCatalogAPI.getUserTasks(CURRENT_USER)
       console.log('📝 Received tasks:', allTasks.length, 'total tasks')
@@ -287,9 +287,9 @@ const loadTaskDetails = async (displayTask: DisplayTask) => {
     hoveredTaskDetails.value = fullTask
 
     // Load pre-dependency tasks if they exist
-    if (fullTask.preDependence && fullTask.preDependence.length > 0) {
+    if (fullTask.preDependence && Array.isArray(fullTask.preDependence) && fullTask.preDependence.length > 0) {
       const preDeps = await Promise.all(
-        fullTask.preDependence.map(depId => TaskCatalogAPI.getTask(CURRENT_USER, depId))
+        fullTask.preDependence.map((depId: string) => TaskCatalogAPI.getTask(CURRENT_USER, depId))
       )
       preDependencyTasks.value = preDeps
     } else {
@@ -444,7 +444,7 @@ const handleTaskCardClick = async (displayTask: DisplayTask) => {
       timeBlockId: displayTask.timeBlockId,
       startTime: displayTask.timeStart,
       endTime: displayTask.timeEnd
-    }
+    } as Task & { timeBlockId: string; startTime: string; endTime: string }
     isEditMode.value = true
     showAddTaskModal.value = true
   } catch (error: any) {
@@ -471,12 +471,12 @@ const handleTaskUpdate = async (taskData: any) => {
 
     // Check if start/end time has actually changed from the original
     console.log('🕐 Time comparison:')
-    console.log('  Original start:', originalTask.startTime, 'New start:', taskData.startTime)
-    console.log('  Original end:', originalTask.endTime, 'New end:', taskData.endTime)
+    console.log('  Original start:', (originalTask as any).startTime, 'New start:', taskData.startTime)
+    console.log('  Original end:', (originalTask as any).endTime, 'New end:', taskData.endTime)
 
     const hasTimeChanged =
-      (originalTask.startTime !== taskData.startTime) ||
-      (originalTask.endTime !== taskData.endTime)
+      ((originalTask as any).startTime !== taskData.startTime) ||
+      ((originalTask as any).endTime !== taskData.endTime)
 
     console.log('🕐 Has time changed?', hasTimeChanged)
 
@@ -488,8 +488,8 @@ const handleTaskUpdate = async (taskData: any) => {
 
       // Parse new start and end times
       const selectedDay = currentDate.value
-      const [startHour, startMinute] = taskData.startTime.split(':')
-      const [endHour, endMinute] = taskData.endTime.split(':')
+      const [startHour = '0', startMinute = '0'] = taskData.startTime.split(':')
+      const [endHour = '0', endMinute = '0'] = taskData.endTime.split(':')
 
       const startDate = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), parseInt(startHour), parseInt(startMinute))
       const endDate = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), parseInt(endHour), parseInt(endMinute))
@@ -548,8 +548,8 @@ const handleTaskSubmit = async (taskData: any) => {
 
     // Convert start and end time to Unix timestamps using the SELECTED date
     const selectedDay = currentDate.value
-    const [startHour, startMinute] = taskData.startTime.split(':')
-    const [endHour, endMinute] = taskData.endTime.split(':')
+    const [startHour = '0', startMinute = '0'] = taskData.startTime.split(':')
+    const [endHour = '0', endMinute = '0'] = taskData.endTime.split(':')
 
     const startDate = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), parseInt(startHour), parseInt(startMinute))
     const endDate = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate(), parseInt(endHour), parseInt(endMinute))
@@ -571,7 +571,7 @@ const handleTaskSubmit = async (taskData: any) => {
     })
 
     // Add pre-dependencies if any were selected
-    if (taskData.preDependencies && taskData.preDependencies.length > 0) {
+    if (taskData.preDependencies && Array.isArray(taskData.preDependencies) && taskData.preDependencies.length > 0) {
       for (const preDependencyId of taskData.preDependencies) {
         await TaskCatalogAPI.addPreDependence(CURRENT_USER, newTask.taskId, preDependencyId)
       }
@@ -588,7 +588,7 @@ const handleTaskSubmit = async (taskData: any) => {
 
     // Check if a time block already exists for this time range
     console.log('🔍 Checking for existing time blocks at this time...')
-    let allSchedules = []
+    let allSchedules: TimeBlock[] = []
     try {
       allSchedules = await ScheduleTimeAPI.getUserSchedule(CURRENT_USER)
     } catch (error: any) {
@@ -694,9 +694,9 @@ const scheduleTaskNotifications = () => {
 
   const now = Date.now()
 
-  tasks.value.forEach(task => {
+  tasks.value.forEach((task: DisplayTask) => {
     // Parse task start time
-    const [hours, minutes] = task.timeStart.split(':').map(Number)
+    const [hours = 0, minutes = 0] = task.timeStart.split(':').map(Number)
     const taskStartDate = new Date(currentDate.value)
     taskStartDate.setHours(hours, minutes, 0, 0)
     const taskStartTime = taskStartDate.getTime()
@@ -858,9 +858,11 @@ const calculateTaskLayouts = computed(() => {
   for (const group of overlapGroups) {
     if (group.length === 1) {
       // Single task - full width
-      group[0].layoutWidth = 100
-      group[0].layoutLeft = 0
-      group[0].layoutColumn = 0
+      const task = group[0]
+      if (!task) continue
+      task.layoutWidth = 100
+      task.layoutLeft = 0
+      task.layoutColumn = 0
     } else {
       // Multiple overlapping tasks - arrange side by side
       // Sort by start time, then by duration (shorter first for better visual)
@@ -882,6 +884,8 @@ const calculateTaskLayouts = computed(() => {
         let placed = false
         for (let i = 0; i < columns.length; i++) {
           const column = columns[i]
+          if (!column) continue
+
           const hasOverlap = column.some(existingTask => tasksOverlap(task, existingTask))
 
           if (!hasOverlap) {

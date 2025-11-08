@@ -72,8 +72,8 @@ const preDependencySearchQuery = ref('')
 const calculatedDuration = computed(() => {
   if (!startTime.value || !endTime.value) return 60 // Default 1 hour in minutes
 
-  const [startHours, startMinutes] = startTime.value.split(':').map(Number)
-  const [endHours, endMinutes] = endTime.value.split(':').map(Number)
+  const [startHours = 0, startMinutes = 0] = startTime.value.split(':').map(Number)
+  const [endHours = 0, endMinutes = 0] = endTime.value.split(':').map(Number)
 
   const startTotalMinutes = startHours * 60 + startMinutes
   const endTotalMinutes = endHours * 60 + endMinutes
@@ -363,20 +363,20 @@ const handleSubmit = async () => {
       const currentPreDeps = selectedPreDependencies.value || []
 
       // Find predependencies to add (in current but not in original)
-      const preDepsToAdd = currentPreDeps.filter(dep => !originalPreDeps.includes(dep))
+      const preDepsToAdd = currentPreDeps.filter((dep: string) => !originalPreDeps.includes(dep))
       // Find predependencies to remove (in original but not in current)
-      const preDepsToRemove = originalPreDeps.filter(dep => !currentPreDeps.includes(dep))
+      const preDepsToRemove = originalPreDeps.filter((dep: string) => !currentPreDeps.includes(dep))
 
       if (preDepsToAdd.length > 0 || preDepsToRemove.length > 0) {
         console.log('🔗 Updating predependencies - Add:', preDepsToAdd, 'Remove:', preDepsToRemove)
 
         // Add new predependencies
-        preDepsToAdd.forEach(dep => {
+        preDepsToAdd.forEach((dep: string) => {
           updatePromises.push(TaskCatalogAPI.addPreDependence(CURRENT_USER, taskId, dep))
         })
 
         // Remove old predependencies
-        preDepsToRemove.forEach(dep => {
+        preDepsToRemove.forEach((dep: string) => {
           updatePromises.push(TaskCatalogAPI.removePreDependence(CURRENT_USER, taskId, dep))
         })
       }

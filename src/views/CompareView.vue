@@ -1779,25 +1779,31 @@ const calculateOverlappingLayout = <T extends { startTime: number; endTime: numb
   for (let i = 0; i < itemsWithLayout.length; i++) {
     if (processedItems.has(i)) continue
 
-    const group: (T & TaskWithLayout)[] = [itemsWithLayout[i]]
+    const currentItem = itemsWithLayout[i]
+    if (!currentItem) continue
+
+    const group: (T & TaskWithLayout)[] = [currentItem]
     processedItems.add(i)
 
     // Find all items that overlap with this item or any item in the group
     for (let j = 0; j < itemsWithLayout.length; j++) {
       if (processedItems.has(j)) continue
 
+      const otherItem = itemsWithLayout[j]
+      if (!otherItem) continue
+
       // Check if this item overlaps with any item in the current group
       const overlaps = group.some(groupItem =>
         timeRangesOverlap(
           groupItem.startTime,
           groupItem.endTime,
-          itemsWithLayout[j].startTime,
-          itemsWithLayout[j].endTime
+          otherItem.startTime,
+          otherItem.endTime
         )
       )
 
       if (overlaps) {
-        group.push(itemsWithLayout[j])
+        group.push(otherItem)
         processedItems.add(j)
       }
     }
@@ -1809,9 +1815,11 @@ const calculateOverlappingLayout = <T extends { startTime: number; endTime: numb
   for (const group of overlapGroups) {
     if (group.length === 1) {
       // Single item - full width
-      group[0].layoutWidth = 100
-      group[0].layoutLeft = 0
-      group[0].layoutColumn = 0
+      const item = group[0]
+      if (!item) continue
+      item.layoutWidth = 100
+      item.layoutLeft = 0
+      item.layoutColumn = 0
     } else {
       // Multiple overlapping items - arrange side by side
       // Sort by start time, then by duration (shorter first)
@@ -1830,6 +1838,8 @@ const calculateOverlappingLayout = <T extends { startTime: number; endTime: numb
         let placed = false
         for (let i = 0; i < columns.length; i++) {
           const column = columns[i]
+          if (!column) continue
+
           const hasOverlap = column.some(existingItem =>
             timeRangesOverlap(
               item.startTime,

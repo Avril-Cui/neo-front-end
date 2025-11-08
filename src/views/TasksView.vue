@@ -274,7 +274,7 @@ const uniqueCategories = computed(() => {
 // Helper: Format date as YYYY-MM-DD
 const formatDate = (timestamp: number): string => {
   const date = new Date(timestamp)
-  return date.toISOString().split('T')[0]
+  return date.toISOString().split('T')[0] || ''
 }
 
 // Helper: Format date for display (e.g., "Mon, Jan 15")

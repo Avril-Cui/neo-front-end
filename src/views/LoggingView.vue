@@ -389,7 +389,7 @@ const createNewSession = async () => {
 
     // Store the created session
     createdSessions.value.push({
-      sessionId: response.session,
+      sessionId: typeof response.session === 'string' ? response.session : response.session.sessionId,
       sessionName: newSessionName.value.trim()
     })
 
