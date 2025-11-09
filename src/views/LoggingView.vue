@@ -174,13 +174,17 @@ const startTimer = async () => {
 
     console.log('Final createParams:', createParams)
     const createResult = await RoutineLogAPI.createSession(createParams)
+    console.log('Raw create result:', createResult)
 
     // Extract the session ID from the returned session object
     const sessionId = typeof createResult.session === 'string'
       ? createResult.session
       : (createResult.session as any)._id
 
+    console.log('Extracted session ID:', sessionId)
+    console.log('Setting currentSessionId.value to:', sessionId)
     currentSessionId.value = sessionId
+    console.log('currentSessionId.value is now:', currentSessionId.value)
 
     console.log('Session created with ID:', sessionId)
 
@@ -262,10 +266,18 @@ const stopTimer = async () => {
 
 const confirmCompletion = async (isCompleted: boolean) => {
   try {
+    console.log('🛑 confirmCompletion called with isCompleted:', isCompleted)
+    console.log('🛑 currentSessionId.value:', currentSessionId.value)
+    console.log('🛑 currentSessionName.value:', currentSessionName.value)
+    console.log('🛑 selectedTaskId.value:', selectedTaskId.value)
+
     // End the session in the backend if we have a session ID
     if (currentSessionId.value) {
+      console.log('🛑 Calling endSession API with ID:', currentSessionId.value)
       await RoutineLogAPI.endSession(CURRENT_USER, { _id: currentSessionId.value }, isCompleted)
-      console.log('Session ended:', currentSessionId.value, 'isCompleted:', isCompleted)
+      console.log('✅ Session ended:', currentSessionId.value, 'isCompleted:', isCompleted)
+    } else {
+      console.log('⚠️ No currentSessionId to end!')
     }
 
     isRunning.value = false
@@ -609,23 +621,27 @@ const calculateDuration = (start: string | number, end: string | number): number
 
 // Delete a session
 const deleteSession = async (sessionLog: SessionLog, event: MouseEvent) => {
+  console.log('🗑️ Delete button clicked for session:', sessionLog.name, sessionLog.id)
+
   // Stop propagation to prevent triggering the resume action
   event.stopPropagation()
 
   if (!confirm(`Are you sure you want to delete the session "${sessionLog.name}"?`)) {
+    console.log('❌ User cancelled deletion')
     return
   }
 
   try {
+    console.log('🗑️ Calling deleteSession API with:', CURRENT_USER, { _id: sessionLog.id })
     await RoutineLogAPI.deleteSession(CURRENT_USER, { _id: sessionLog.id })
-    console.log('Session deleted:', sessionLog.id)
+    console.log('✅ Session deleted successfully:', sessionLog.id)
 
     // Refresh the session list
     await fetchUserSessions()
 
     alert('Session deleted successfully')
   } catch (error: any) {
-    console.error('Failed to delete session:', error)
+    console.error('❌ Failed to delete session:', error)
     alert(`Failed to delete session: ${error.message || 'Unknown error'}`)
   }
 }
@@ -734,6 +750,12 @@ const fetchUserSessions = async () => {
     })
 
     console.log(`Filtered ${sessions.length} sessions for today from ${allSessions.length} total sessions`)
+
+    // Log all sessions to debug duplicates
+    console.log('All sessions details:')
+    allSessions.forEach(s => {
+      console.log(`  - ${s.sessionName} [${s.sessionId}] linkedTask: ${s.linkedTaskId || 'none'} active: ${s.isActive} done: ${s.isDone}`)
+    })
 
     // Process each session to build the session log data
     const logs: SessionLog[] = []

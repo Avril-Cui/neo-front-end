@@ -147,6 +147,11 @@ async function apiCall<T>(endpoint: string, body: any): Promise<T> {
     const data = await response.json()
     console.log(`API Response: ${endpoint}`, data)
 
+    // Special logging for createSession to debug duplicates
+    if (endpoint === '/api/RoutineLog/createSession') {
+      console.log('📍 createSession response details:', JSON.stringify(data, null, 2))
+    }
+
     if (!response.ok || data.error) {
       console.error(`API Error: ${endpoint}`, data)
       throw new Error(data.error || `API call failed: ${endpoint} - Status: ${response.status}`)
