@@ -164,12 +164,12 @@ const startTimer = async () => {
       sessionName: currentSessionName.value
     }
 
-    // Only add linkedTaskId if a task was selected
+    // Always include linkedTaskId (null for ad-hoc sessions, task ID for planned sessions)
+    createParams.linkedTaskId = selectedTaskId.value || null
     if (selectedTaskId.value) {
-      console.log('✅ Adding linkedTaskId to session:', selectedTaskId.value)
-      createParams.linkedTaskId = selectedTaskId.value
+      console.log('✅ Creating planned session with linkedTaskId:', selectedTaskId.value)
     } else {
-      console.log('⚠️ No linkedTaskId - creating ad-hoc session')
+      console.log('⚠️ Creating ad-hoc session (linkedTaskId: null)')
     }
 
     console.log('Final createParams:', createParams)
@@ -741,12 +741,13 @@ const fetchUserSessions = async () => {
 
     // Filter sessions to only show those from today
     const sessions = allSessions.filter(session => {
-      // Only show sessions that started today
+      // Only show sessions that have a start time AND started today
+      // Don't show sessions without start times or from previous days
       if (session.start) {
         return isToday(session.start)
       }
-      // For sessions without a start time (not yet started), show them
-      return true
+      // Don't show sessions without start times
+      return false
     })
 
     console.log(`Filtered ${sessions.length} sessions for today from ${allSessions.length} total sessions`)
