@@ -427,7 +427,7 @@ const formatDuration = (milliseconds: number): string => {
     return '0h 0m'
   }
   if (totalMinutes < 60) {
-    return `${totalMinutes} minutes`
+    return `${totalMinutes} min`
   }
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
@@ -2629,6 +2629,7 @@ onMounted(async () => {
   background: rgba(255, 111, 97, 0.1);
   color: #FF6F61;
   border: 1px solid rgba(255, 111, 97, 0.2);
+  margin-left: 50px;
 }
 
 .task-perfect-match .task-time {
