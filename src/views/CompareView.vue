@@ -176,13 +176,15 @@
           </div>
 
           <!-- Comparison slots - Perfect Match (full width) -->
-          <template v-for="(comparison, index) in comparisons" :key="`perfect-${index}`">
+          <template v-for="(comparison, index) in comparisonsWithPerfectMatchLayout" :key="`perfect-${index}`">
             <div
               v-if="comparison.isPerfectMatch"
               class="perfect-match-slot"
               :style="{
                 top: getComparisonPosition(comparison.startTime || 0) + 'px',
-                height: calculateHeightWithMin(comparison.startTime || 0, comparison.endTime || 0) + 'px'
+                height: calculateHeightWithMin(comparison.startTime || 0, comparison.endTime || 0) + 'px',
+                width: 'calc((100% - 100px) * ' + ((comparison as any).perfectMatchLayout?.layoutWidth || 100) / 100 + ')',
+                left: 'calc(100px + (100% - 100px) * ' + ((comparison as any).perfectMatchLayout?.layoutLeft || 0) / 100 + ')'
               }"
             >
               <div class="task-perfect-match" :class="{ 'short-task': isShortSession(comparison.duration) }">
@@ -1943,6 +1945,81 @@ const comparisonsWithActualLayout = computed(() => {
   })
 })
 
+// Calculate layouts for perfect match blocks (need to check overlaps with all block types)
+const perfectMatchLayouts = computed(() => {
+  const perfectMatchBlocks = comparisons.value
+    .filter(c => c.isPerfectMatch)
+    .map(c => ({
+      ...c,
+      startTime: c.startTime || 0,
+      endTime: c.endTime || 0
+    }))
+
+  if (perfectMatchBlocks.length === 0) return []
+
+  // Get all other blocks that could overlap (planned, actual, adaptive)
+  const allOtherBlocks: { startTime: number; endTime: number }[] = []
+
+  // Add planned tasks
+  comparisons.value.forEach(c => {
+    if (c.planned && !c.isPerfectMatch) {
+      allOtherBlocks.push({
+        startTime: c.planned.startTime,
+        endTime: c.planned.endTime
+      })
+    }
+  })
+
+  // Add actual tasks
+  comparisons.value.forEach(c => {
+    if (c.actual && !c.isPerfectMatch) {
+      allOtherBlocks.push({
+        startTime: c.actual.startTime,
+        endTime: c.actual.endTime
+      })
+    }
+  })
+
+  // Add adaptive blocks
+  adaptiveBlocksWithTasks.value.forEach(block => {
+    allOtherBlocks.push({
+      startTime: block.start,
+      endTime: block.end
+    })
+  })
+
+  // Calculate layout for perfect match blocks including overlaps with all other blocks
+  return calculateOverlappingLayout(perfectMatchBlocks.map(block => {
+    // Check if this block overlaps with any other block
+    const hasOverlap = allOtherBlocks.some(other =>
+      timeRangesOverlap(block.startTime, block.endTime, other.startTime, other.endTime)
+    )
+
+    return {
+      ...block,
+      hasOverlapWithOthers: hasOverlap
+    }
+  }))
+})
+
+const comparisonsWithPerfectMatchLayout = computed(() => {
+  return comparisons.value.map(comparison => {
+    if (!comparison.isPerfectMatch) return comparison
+
+    const layout = perfectMatchLayouts.value.find(
+      layout =>
+        layout.startTime === (comparison.startTime || 0) &&
+        layout.endTime === (comparison.endTime || 0) &&
+        layout.taskName === comparison.taskName
+    )
+
+    return {
+      ...comparison,
+      perfectMatchLayout: layout || { layoutWidth: 100, layoutLeft: 0 }
+    }
+  })
+})
+
 onMounted(async () => {
   // Initialize selected date
   selectedDate.value = formatDisplayDate(currentDate.value)
@@ -2330,8 +2407,6 @@ onMounted(async () => {
 
 .perfect-match-slot {
   position: absolute;
-  left: 100px;
-  right: 0;
   padding: 0;
   box-sizing: border-box;
 }
@@ -2629,6 +2704,10 @@ onMounted(async () => {
   background: rgba(255, 111, 97, 0.1);
   color: #FF6F61;
   border: 1px solid rgba(255, 111, 97, 0.2);
+}
+
+/* Only add margin for blocks longer than 30 min to avoid overlap with ACTUAL label */
+.actual-task:not(.short-task) .task-time {
   margin-left: 50px;
 }
 
